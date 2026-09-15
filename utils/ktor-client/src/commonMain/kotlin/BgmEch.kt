@@ -5,14 +5,14 @@ import io.ktor.client.call.HttpClientCall
 import io.ktor.client.plugins.HttpSend
 import io.ktor.client.plugins.plugin
 import io.ktor.client.request.HttpRequestBuilder
-import io.ktor.client.statement.HttpResponseData
+import io.ktor.client.request.HttpResponseData
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpProtocolVersion
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.OutgoingContent
-import io.ktor.util.InternalAPI
+import io.ktor.utils.io.core.InternalAPI
 import io.ktor.util.date.GMTDate
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.readRemaining
@@ -37,7 +37,7 @@ internal object BgmEchHosts {
     }
 }
 
-internal class BgmEchResult(
+class BgmEchResult(
     val status: Int,
     val headers: List<Pair<String, String>>,
     val body: ByteArray,
@@ -68,7 +68,11 @@ internal fun HttpClient.installBgmEch() {
             .flatMap { (k, v) -> v.map { k to it } }
             .filterNot { (k, _) -> k.equals(HttpHeaders.Host, true) || k.equals(HttpHeaders.ContentLength, true) }
             .toMap()
-        val bodyBytes = requestBodyBytes(request.body, host)
+        val bodyBytes = requestBodyBytes(
+            request.body as? OutgoingContent
+                ?: throw IOException("ECH 请求体不可读($host)，拒绝明文"),
+            host,
+        )
         val r = BgmEchFetch.fetchIfProtected(request.url.toString(), request.method, headers, bodyBytes)
             ?: throw IOException("ECH 未覆盖 $host，拒绝明文")
         echLogger.info { "ECH $host ${request.method.value} -> ${r.status}" }
