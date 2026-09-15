@@ -129,8 +129,7 @@ dependencies {
 //    implementation(libs.log4j.slf4j.impl)
 
     implementation(libs.ktor.client.core)
-    // 与 Ktor 3.1.1 内置版本对齐（查 POM 实测），供 ECH 拦截器直接用
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation(projects.utils.ktorClient)
     implementation(libs.mediamp.ffmpeg)
 }
 

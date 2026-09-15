@@ -98,8 +98,8 @@ class AniApplication : Application() {
         AppStartupTasks.printVersions()
         startupTimeMonitor.mark(StepName.Logging)
 
-        // ECH 库预加载（失败不 blocking，请求时 fail-closed）
-        runCatching { me.him188.ani.utils.ktor.BgmEchFetch.ensureInit(this) }
+        // ECH 传输注入（失败不 blocking，请求时 fail-closed）
+        runCatching { me.him188.ani.android.ech.BgmEchInit.install(this) }
 
         val defaultUEH = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->

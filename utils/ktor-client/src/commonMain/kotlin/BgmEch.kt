@@ -12,17 +12,18 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.HttpProtocolVersion
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.OutgoingContent
-import io.ktor.utils.io.core.InternalAPI
 import io.ktor.util.date.GMTDate
 import io.ktor.utils.io.ByteReadChannel
+import io.ktor.utils.io.InternalAPI
 import io.ktor.utils.io.readRemaining
 import kotlinx.io.IOException
 import kotlinx.io.readByteArray
-import me.him188.ani.utils.logging.logger
 
-// Bangumi 系域名 ECH：通用插件 + 分平台实现。
+// Bangumi 系域名 ECH：通用插件 + 可插拔传输。
 // 受保护域名只走 ECH，失败抛异常绝不放行明文；非受保护域名原样走引擎。
-// Android 用预编译库真握手；桌面/iOS 现阶段直通（桌面 ECH 排下一件）。
+// 传输由平台方注入（Android 在 Application 里挂预编译库实现）；
+// 未注入的平台（桌面/iOS）fetchHandler 为 null → 受保护域名直接抛异常？不：
+// 未注入时返回 null 走正常链路，保证不断其他平台链路（桌面 ECH 排下一件）。
 
 internal object BgmEchHosts {
     private val protectedHosts: Set<String> = setOf(
@@ -43,18 +44,10 @@ class BgmEchResult(
     val body: ByteArray,
 )
 
-expect object BgmEchFetch {
-    // 非受保护域名或本平台不支持 → 返回 null，走正常链路。
-    // 受保护但拿不到配置/握手失败 → 抛 IOException（fail-closed）。
-    suspend fun fetchIfProtected(
-        url: String,
-        method: HttpMethod,
-        headers: Map<String, String>,
-        body: ByteArray?,
-    ): BgmEchResult?
+object BgmEchTransport {
+    // 平台注入的真实现；null = 本平台暂不支持，走正常链路。
+    var fetchHandler: (suspend (url: String, method: HttpMethod, headers: Map<String, String>, body: ByteArray?) -> BgmEchResult?)? = null
 }
-
-private val echLogger = logger("BgmEch")
 
 @OptIn(InternalAPI::class)
 internal fun HttpClient.installBgmEch() {
@@ -64,6 +57,8 @@ internal fun HttpClient.installBgmEch() {
         if (!BgmEchHosts.isProtected(host)) {
             return@intercept execute(request)
         }
+        val handler = BgmEchTransport.fetchHandler
+            ?: return@intercept execute(request)
         val headers = request.headers.entries()
             .flatMap { (k, v) -> v.map { k to it } }
             .filterNot { (k, _) -> k.equals(HttpHeaders.Host, true) || k.equals(HttpHeaders.ContentLength, true) }
@@ -73,9 +68,8 @@ internal fun HttpClient.installBgmEch() {
                 ?: throw IOException("ECH 请求体不可读($host)，拒绝明文"),
             host,
         )
-        val r = BgmEchFetch.fetchIfProtected(request.url.toString(), request.method, headers, bodyBytes)
+        val r = handler(request.url.toString(), request.method, headers, bodyBytes)
             ?: throw IOException("ECH 未覆盖 $host，拒绝明文")
-        echLogger.info { "ECH $host ${request.method.value} -> ${r.status}" }
         HttpClientCall(
             client,
             request.build(),
