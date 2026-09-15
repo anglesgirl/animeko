@@ -17,6 +17,12 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      - name: Set up JetBrains JDK 21 (Gradle toolchain)
+        uses: actions/setup-java@v4
+        with:
+          distribution: jetbrains
+          java-version: 21
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
