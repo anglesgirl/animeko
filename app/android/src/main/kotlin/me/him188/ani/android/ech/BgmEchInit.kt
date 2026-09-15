@@ -42,8 +42,8 @@ object BgmEchInit {
         headers.forEach { (k, v) -> rb.header(k, v) }
         if (body == null && method == HttpMethod.Get) rb.get()
         else rb.method(method.value, body?.toRequestBody("application/octet-stream".toMediaTypeOrNull()))
-        Log.i(TAG, "-> ${method.value()} $url")
-        fileLogger.info { "BGM-ECH -> ${method.value()} $url" }
+        Log.i(TAG, "-> ${method.value} $url")
+        fileLogger.info { "BGM-ECH -> ${method.value} $url" }
         try {
             EchHttp.get().newCall(rb.build()).execute().use { resp ->
                 val bytes = resp.body?.bytes() ?: ByteArray(0)
