@@ -5,6 +5,8 @@ import com.liar.han1meplus.EchHttpClient
 import io.ktor.http.HttpMethod
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.io.IOException
 import me.him188.ani.utils.ktor.BgmEchResult
@@ -36,6 +38,9 @@ object BgmEchInit {
     @Volatile
     private var installed = false
 
+    // 原生库多路并发进会崩（启动 burst），这里串行砌墙
+    private val nativeMutex = Mutex()
+
     fun install(context: Context) {
         EchHttpClient.init(context.applicationContext)
         if (installed) return
@@ -52,6 +57,18 @@ object BgmEchInit {
         body: ByteArray?,
     ): BgmEchResult? = withContext(Dispatchers.IO) {
         if (!EchHttpClient.isLoaded) throw IOException("ECH 库未加载，拒绝明文")
+        // 原生调用串行化：并发进库会 native 崩
+        nativeMutex.withLock {
+            poolLoop(url, method, headers, body)
+        }
+    }
+
+    private suspend fun poolLoop(
+        url: String,
+        method: HttpMethod,
+        headers: Map<String, String>,
+        body: ByteArray?,
+    ): BgmEchResult? {
         var lastError: IOException? = null
         for (offset in pool.indices) {
             val idx = (startIndex + offset) % pool.size
@@ -68,7 +85,7 @@ object BgmEchInit {
                         throw IOException("ECH 未生效(${resp.echStatus})，拒绝明文")
                     }
                     startIndex = idx
-                    return@withContext BgmEchResult(
+                    return BgmEchResult(
                         resp.statusCode,
                         resp.headers.flatMap { (k, v) -> v.map { k to it } },
                         resp.body,
