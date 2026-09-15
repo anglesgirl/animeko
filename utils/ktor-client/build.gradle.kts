@@ -36,6 +36,12 @@ kotlin {
         }
     }
 
+    sourceSets.getByName("androidMain") {
+        dependencies {
+            implementation(libs.androidx.annotation)
+        }
+    }
+
     sourceSets.appleMain {
         dependencies {
             api(libs.ktor.client.darwin)

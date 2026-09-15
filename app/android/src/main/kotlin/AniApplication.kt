@@ -98,6 +98,9 @@ class AniApplication : Application() {
         AppStartupTasks.printVersions()
         startupTimeMonitor.mark(StepName.Logging)
 
+        // ECH 库预加载（失败不 blocking，请求时 fail-closed）
+        runCatching { me.him188.ani.utils.ktor.BgmEchFetch.ensureInit(this) }
+
         val defaultUEH = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
             logger<AniApplication>().error(e) { "!!!ANI FATAL EXCEPTION!!! ($e)" }

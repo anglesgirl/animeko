@@ -81,6 +81,8 @@ fun createDefaultHttpClient(
     }
     expectSuccess = true // All clients actually expect success by default in clientConfig, so we move them here
     clientConfig()
+}.apply {
+    installBgmEch()
 }
 
 fun HttpClient.registerLogging(
