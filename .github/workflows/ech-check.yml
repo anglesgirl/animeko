@@ -28,3 +28,13 @@ jobs:
 
       - name: Build ktor-client Android
         run: ./gradlew :utils:ktor-client:assembleAndroidMain --no-daemon --stacktrace
+
+      - name: Build app debug APK
+        run: ./gradlew :app:android:assembleDebug --no-daemon --stacktrace
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: animeko-ech-debug
+          path: app/android/build/outputs/apk/debug/*.apk
+          retention-days: 14
