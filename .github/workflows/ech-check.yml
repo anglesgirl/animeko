@@ -38,3 +38,14 @@ jobs:
           name: animeko-ech-debug
           path: app/android/build/outputs/apk/default/debug/*.apk
           retention-days: 14
+
+      - name: Notify build result
+        if: always() && env.TELEGRAM_BOT_TOKEN != ''
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GH_TOKEN: ${{ github.token }}
+          BUILD_STATUS: ${{ job.status }}
+          HEAD_SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: bash .github/scripts/notify-ech-check.sh
