@@ -12,6 +12,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.io.IOException
 import me.him188.ani.utils.ktor.BgmEchResult
 import me.him188.ani.utils.ktor.BgmEchTransport
+import me.him188.ani.utils.logging.logger
 
 // Android 传输注入：在 Application.onCreate 调一次。
 // 网关池：一个不通换下一个；库未加载/无配置/被拒一律抛异常，绝不放行明文。
@@ -40,6 +41,7 @@ object BgmEchInit {
     private var installed = false
 
     private const val TAG = "BGM-ECH"
+    private val fileLogger = logger<BgmEchInit>()
 
     // 原生库多路并发进会崩（启动 burst），这里串行砌墙
     private val nativeMutex = Mutex()
@@ -47,6 +49,7 @@ object BgmEchInit {
     fun install(context: Context) {
         EchHttpClient.init(context.applicationContext)
         Log.i(TAG, "init loaded=${EchHttpClient.isLoaded} abis=${android.os.Build.SUPPORTED_ABIS.joinToString()}")
+        fileLogger.info { "BGM-ECH init loaded=${EchHttpClient.isLoaded}" }
         if (installed) return
         installed = true
         BgmEchTransport.fetchHandler = { url, method, headers, body ->
@@ -79,9 +82,11 @@ object BgmEchInit {
             val ep = pool[idx]
             repeat(2) {
                 Log.i(TAG, "-> ${method.value} $url [ep$idx try$it]")
+                fileLogger.info { "BGM-ECH -> ${method.value} $url [ep$idx]" }
                 try {
                     val resp = EchHttpClient.execute(method.value, url, headers, body, ep.url, ep.resolve)
                     Log.i(TAG, "<- ${resp.statusCode} ${resp.echStatus} $url")
+                    fileLogger.info { "BGM-ECH <- ${resp.statusCode} ${resp.echStatus} $url" }
                     if (isEchRejected(resp.echStatus)) {
                         lastError = IOException("ECH 被拒(${resp.echStatus})")
                         delay(300)
