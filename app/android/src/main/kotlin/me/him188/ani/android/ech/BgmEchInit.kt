@@ -1,6 +1,7 @@
 package me.him188.ani.android.ech
 
 import android.content.Context
+import android.util.Log
 import com.liar.han1meplus.EchHttpClient
 import io.ktor.http.HttpMethod
 import kotlinx.coroutines.Dispatchers
@@ -38,11 +39,14 @@ object BgmEchInit {
     @Volatile
     private var installed = false
 
+    private const val TAG = "BGM-ECH"
+
     // 原生库多路并发进会崩（启动 burst），这里串行砌墙
     private val nativeMutex = Mutex()
 
     fun install(context: Context) {
         EchHttpClient.init(context.applicationContext)
+        Log.i(TAG, "init loaded=${EchHttpClient.isLoaded} abis=${android.os.Build.SUPPORTED_ABIS.joinToString()}")
         if (installed) return
         installed = true
         BgmEchTransport.fetchHandler = { url, method, headers, body ->
@@ -74,8 +78,10 @@ object BgmEchInit {
             val idx = (startIndex + offset) % pool.size
             val ep = pool[idx]
             repeat(2) {
+                Log.i(TAG, "-> ${method.value} $url [ep$idx try$it]")
                 try {
                     val resp = EchHttpClient.execute(method.value, url, headers, body, ep.url, ep.resolve)
+                    Log.i(TAG, "<- ${resp.statusCode} ${resp.echStatus} $url")
                     if (isEchRejected(resp.echStatus)) {
                         lastError = IOException("ECH 被拒(${resp.echStatus})")
                         delay(300)
