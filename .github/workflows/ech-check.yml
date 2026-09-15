@@ -26,5 +26,5 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: List module tasks
-        run: ./gradlew :utils:ktor-client:tasks --all --no-daemon > /tmp/alltasks.txt 2>&1; grep -iE "android" /tmp/alltasks.txt | head -30
+      - name: Build ktor-client Android
+        run: ./gradlew :utils:ktor-client:assembleAndroidMain --no-daemon --stacktrace
