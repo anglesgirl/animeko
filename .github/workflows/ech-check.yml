@@ -27,4 +27,4 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Compile ktor-client Android
-        run: ./gradlew :utils:ktor-client:compileDebugKotlinAndroid --no-daemon --stacktrace
+        run: ./gradlew :utils:ktor-client:assembleDebug --no-daemon --stacktrace
