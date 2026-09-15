@@ -27,4 +27,4 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: List module tasks
-        run: ./gradlew :utils:ktor-client:tasks --all --no-daemon 2>&1 | grep -iE "assemble|compile.*kotlin" | head -20
+        run: ./gradlew :utils:ktor-client:tasks --all --no-daemon > /tmp/alltasks.txt 2>&1; grep -iE "android" /tmp/alltasks.txt | head -30
