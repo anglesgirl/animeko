@@ -6,8 +6,8 @@ import com.liar.han1meplus.EchHttpClient
 import io.ktor.http.HttpMethod
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.io.IOException
 import me.him188.ani.utils.ktor.BgmEchResult
@@ -43,8 +43,8 @@ object BgmEchInit {
     private const val TAG = "BGM-ECH"
     private val fileLogger = logger<BgmEchInit>()
 
-    // 原生库多路并发进会崩（启动 burst），这里串行砌墙
-    private val nativeMutex = Mutex()
+    // 原生库多路并发进会崩，并发数保守放宽到 3（之前串行太卡）
+    private val nativeGate = Semaphore(3)
 
     fun install(context: Context) {
         EchHttpClient.init(context.applicationContext)
@@ -64,8 +64,8 @@ object BgmEchInit {
         body: ByteArray?,
     ): BgmEchResult? = withContext(Dispatchers.IO) {
         if (!EchHttpClient.isLoaded) throw IOException("ECH 库未加载，拒绝明文")
-        // 原生调用串行化：并发进库会 native 崩
-        nativeMutex.withLock {
+        // 原生调用限流：无限制并发会 native 崩
+        nativeGate.withPermit {
             poolLoop(url, method, headers, body)
         }
     }
