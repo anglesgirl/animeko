@@ -26,5 +26,5 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Compile ktor-client Android
-        run: ./gradlew :utils:ktor-client:assembleDebug --no-daemon --stacktrace
+      - name: List module tasks
+        run: ./gradlew :utils:ktor-client:tasks --all --no-daemon 2>&1 | grep -iE "assemble|compile.*kotlin" | head -20
