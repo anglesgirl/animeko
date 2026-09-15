@@ -130,6 +130,9 @@ dependencies {
 
     implementation(libs.ktor.client.core)
     implementation(projects.utils.ktorClient)
+    // Conscrypt ECH（版本经源码实锤含 setEchConfigList）
+    implementation("org.conscrypt:conscrypt-android:2.7.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation(libs.mediamp.ffmpeg)
 }
 
