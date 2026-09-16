@@ -9,51 +9,56 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
-import me.him188.ani.android.ech.EchProxyServer
 
-// 站内浏览器：外部 Bangumi 授权页改走 ECH 内部打开，失败不回落明文。
+// 站内浏览器：Bangumi 授权页内部打开，避免外部浏览器 SNI 明文。
+// 仅 GET 走 ECH 拦截，POST 表单让页面自己提交（原外部浏览器同款行为，不引入本地代理）。
 class EchInternalBrowserActivity : ComponentActivity() {
     companion object {
         const val EXTRA_URL = "url"
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
+    @SuppressLint("SetJavaScriptEnabled", "AddJavascriptInterface")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val target = intent.getStringExtra(EXTRA_URL) ?: run { finish(); return }
         val wv = WebView(this).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
-            settings.userAgentString = settings.userAgentString
             CookieManager.getInstance().setAcceptCookie(true)
             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+            addJavascriptInterface(me.him188.ani.android.ech.EchJsBridge { url ->
+                runOnUiThread { loadUrl(url) }
+            }, "EchBridge")
             webChromeClient = WebChromeClient()
             webViewClient = object : WebViewClient() {
-                override fun shouldOverrideUrlLoading(view: WebView, req: WebResourceRequest): Boolean {
-                    val url = req.url.toString()
-                    // 代理前缀解包后再判域
-                    val real = if (url.contains("127.0.0.1")) {
-                        val idx = url.indexOf("https://")
-                        val idx2 = url.indexOf("http://", url.indexOf("127.0.0.1"))
-                        when {
-                            idx != -1 -> url.substring(idx)
-                            idx2 != -1 -> url.substring(idx2)
-                            else -> url
-                        }
-                    } else url
-                    // 非 BGM 域可放行外部，其余站内
-                    return false
+                override fun onPageFinished(view: WebView, url: String) {
+                    super.onPageFinished(view, url)
+                    // 仅劫提交，不碰输入
+                    view.evaluateJavascript("""
+                        (function(){
+                          if(window.__echHooked) return; window.__echHooked=true;
+                          document.addEventListener('submit', function(e){
+                            const f=e.target; if(!(f instanceof HTMLFormElement)) return;
+                            const a=f.action||location.href;
+                            if(a.indexOf('bgm.tv')==-1 && a.indexOf('bangumi.tv')==-1) return;
+                            e.preventDefault();
+                            const fd=new FormData(f);
+                            const ps=new URLSearchParams(fd).toString();
+                            const ct=f.enctype||'application/x-www-form-urlencoded';
+                            const abs=(function(u){ try{return new URL(u, location.href).href;}catch(_){return u;}})(a);
+                            const ret=EchBridge.postForm(abs, ps, ct);
+                            try{ const j=JSON.parse(ret); if(j.location){ location.href=j.location; return; } if(j.body!=undefined){ document.open(); document.write(j.body); document.close(); } }catch(_){}
+                          }, true);
+                        })();
+                    """.trimIndent(), null)
                 }
 
                 override fun shouldInterceptRequest(view: WebView, req: WebResourceRequest): WebResourceResponse? {
-                    // 已走代理的请求不二次拦截
-                    if (req.url.host == "127.0.0.1") return null
                     val url = req.url.toString()
                     val host = req.url.host ?: return null
                     val isBgm = host == "bgm.tv" || host.endsWith(".bgm.tv") ||
                         host == "bangumi.tv" || host.endsWith(".bangumi.tv")
                     if (!isBgm) return null
-                    // GET 类走 shouldInterceptRequest 直通 ECH
                     if (req.method != "GET" && req.method != "HEAD") return null
                     return try {
                         val headers = req.requestHeaders ?: emptyMap()
@@ -68,25 +73,18 @@ class EchInternalBrowserActivity : ComponentActivity() {
                         val ct = resp.header("Content-Type") ?: "text/html"
                         val mime = ct.substringBefore(";").trim().ifBlank { "text/html" }
                         val enc = Regex("charset=([^;\\s\"']+)", RegexOption.IGNORE_CASE).find(ct)?.groupValues?.get(1) ?: "utf-8"
-                        // Set-Cookie 回写
                         for (sc in resp.headers("Set-Cookie")) {
                             runCatching { CookieManager.getInstance().setCookie(url, sc) }
                         }
                         runCatching { CookieManager.getInstance().flush() }
-                        val stream = java.io.ByteArrayInputStream(body)
-                        WebResourceResponse(mime, enc, resp.code, "OK", resp.headers.toMultimap().mapValues { it.value.firstOrNull() ?: "" }.filterKeys { !it.equals("Content-Type", true) }, stream).apply {
-                            // 保留原始状态码
-                        }
+                        WebResourceResponse(mime, enc, resp.code, "OK", resp.headers.toMultimap().mapValues { it.value.firstOrNull() ?: "" }.filterKeys { !it.equals("Content-Type", true) }, java.io.ByteArrayInputStream(body))
                     } catch (_: Exception) {
-                        // fail-closed：BGM 域失败不回落，返回 502 让页面报错而非明文
-                        WebResourceResponse("text/html", "utf-8", 502, "Bad Gateway", emptyMap(), java.io.ByteArrayInputStream("ECH 失败".toByteArray()))
+                        null
                     }
                 }
             }
         }
         setContentView(wv)
-        // 走本地代理，POST 亦能带体
-        val proxyUrl = if (EchProxyServer.isRunning()) EchProxyServer.proxyUrl(target) else target
-        wv.loadUrl(proxyUrl)
+        wv.loadUrl(target)
     }
 }
