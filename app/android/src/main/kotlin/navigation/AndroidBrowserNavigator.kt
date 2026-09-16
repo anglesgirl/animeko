@@ -21,7 +21,25 @@ import me.him188.ani.utils.logging.logger
 class AndroidBrowserNavigator : BrowserNavigator {
     private val logger = logger<AndroidBrowserNavigator>()
 
+    private fun isBgmUrl(url: String): Boolean {
+        val h = runCatching { url.toUri().host?.lowercase()?.trimEnd('.') }.getOrNull() ?: return false
+        return h == "bgm.tv" || h.endsWith(".bgm.tv") || h == "bangumi.tv" || h.endsWith(".bangumi.tv") ||
+            h == "api.bgm.tv" || h.endsWith(".api.bgm.tv") || h == "next.bgm.tv" || h.endsWith(".next.bgm.tv")
+    }
+
     override fun openBrowser(context: Context, url: String): OpenBrowserResult {
+        // BGM 相关走站内 ECH 浏览器（外部浏览器 SNI 明文会被墙）
+        if (isBgmUrl(url) && runCatching { me.him188.ani.android.ech.EchProxyServer.isRunning() }.getOrDefault(false)) {
+            try {
+                val i = Intent(context, me.him188.ani.android.activity.EchInternalBrowserActivity::class.java).apply {
+                    putExtra(me.him188.ani.android.activity.EchInternalBrowserActivity.EXTRA_URL, url)
+                }
+                context.startActivity(i)
+                return OpenBrowserResult.Success
+            } catch (e: Exception) {
+                logger.warn("ECH 内置浏览器打开失败，回落外部", e)
+            }
+        }
         val lastEx: Exception
 
         try {

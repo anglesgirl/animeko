@@ -100,6 +100,8 @@ class AniApplication : Application() {
 
         // ECH 传输注入（请求时 fail-closed）
         runCatching { me.him188.ani.android.ech.BgmEchInit.install(this) }
+        // 内部浏览器 ECH 代理（WebView 渲染，POST 亦走 ECH）
+        runCatching { me.him188.ani.android.ech.EchProxyServer.start() }
 
         val defaultUEH = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
