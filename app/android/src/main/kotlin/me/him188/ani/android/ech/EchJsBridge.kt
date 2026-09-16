@@ -14,7 +14,7 @@ class EchJsBridge(private val onNavigate: (String) -> Unit) {
 
     @JavascriptInterface
     fun postForm(url: String, body: String, contentType: String?, referer: String?): String {
-        val host = runCatching { HttpUrl.Companion.toHttpUrl(url).host }.getOrNull()
+        val host = runCatching { HttpUrl.get(url).host }.getOrNull()
         val isBgm = host == "bgm.tv" || host?.endsWith(".bgm.tv") == true ||
             host == "bangumi.tv" || host?.endsWith(".bangumi.tv") == true
         if (!isBgm) {
@@ -32,7 +32,7 @@ class EchJsBridge(private val onNavigate: (String) -> Unit) {
             if (!referer.isNullOrBlank()) {
                 rb.header("Referer", referer)
                 runCatching {
-                    val r = HttpUrl.Companion.toHttpUrl(referer)
+                    val r = HttpUrl.get(referer)
                     rb.header("Origin", "${r.scheme}://${r.host}")
                 }
             }
