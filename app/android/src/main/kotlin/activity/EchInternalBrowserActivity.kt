@@ -123,8 +123,16 @@ class EchInternalBrowserActivity : ComponentActivity() {
                         }
                         runCatching { CookieManager.getInstance().flush() }
                         WebResourceResponse(mime, enc, resp.code, "OK", resp.headers.toMultimap().mapValues { it.value.firstOrNull() ?: "" }.filterKeys { !it.equals("Content-Type", true) }, java.io.ByteArrayInputStream(body))
-                    } catch (_: Exception) {
-                        null
+                    } catch (e: Exception) {
+                        // fail-closed：ECH 通道失败时返回 502 错误页，绝不回落 WebView 明文直连（明文 SNI 会被墙 RST）
+                        android.util.Log.w("BGM-ECH", "ECH GET 失败 $url: ${e.message}")
+                        WebResourceResponse(
+                            "text/plain", "utf-8", 502, "ECH Failed",
+                            mapOf("Content-Type" to "text/plain; charset=utf-8"),
+                            java.io.ByteArrayInputStream(
+                                ("ECH 通道失败，无法加载 $url\n\n${e.javaClass.simpleName}: ${e.message}").toByteArray()
+                            ),
+                        )
                     }
                 }
             }

@@ -46,7 +46,8 @@ object BgmEchInit {
         Log.i(TAG, "-> $methodStr $url")
         fileLogger.info("BGM-ECH -> $methodStr $url")
         try {
-            EchHttp.get().newCall(rb.build()).execute().use { resp ->
+            val client = if (method == HttpMethod.Get || method == HttpMethod.Head) EchHttp.get() else EchHttp.post()
+            client.newCall(rb.build()).execute().use { resp ->
                 val bytes = resp.body?.bytes() ?: ByteArray(0)
                 val hs = mutableListOf<Pair<String, String>>()
                 for (i in 0 until resp.headers.size) hs.add(resp.headers.name(i) to resp.headers.value(i))
