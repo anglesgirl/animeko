@@ -1,0 +1,24 @@
+name: diag-bgm
+on: [workflow_dispatch, push]
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch BGM login page
+        run: |
+          UA="Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Mobile Safari/537.36"
+          curl -sL -A "$UA" -c /tmp/bgm_cookies.txt -o /tmp/bgm_login.html -w "HTTP=%{http_code} FINAL=%{url_effective}\n" "https://bgm.tv/login"
+          echo "===== COOKIES ====="
+          cat /tmp/bgm_cookies.txt
+          echo "===== TITLE ====="
+          grep -oE '<title>[^<]*' /tmp/bgm_login.html | head -2
+          echo "===== hidden inputs ====="
+          grep -oE '<input[^>]*>' /tmp/bgm_login.html | grep -i 'hidden' | head -25
+          echo "===== seccode/captcha refs ====="
+          grep -oiE '(seccode[a-z_]*|captcha|recaptcha|geetest|验证码)' /tmp/bgm_login.html | sort | uniq -c | head
+          echo "===== login form ====="
+          grep -oE '<form[^>]*>' /tmp/bgm_login.html | head -5
+          grep -oE '<input[^>]*>' /tmp/bgm_login.html | grep -viE 'hidden|checkbox|submit' | head -15
+          echo "===== first_field hint ====="
+          grep -oiE 'first_field_id[^,}]{0,60}' /tmp/bgm_login.html | head -3
