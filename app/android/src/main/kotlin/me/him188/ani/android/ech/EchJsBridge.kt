@@ -25,8 +25,8 @@ class EchJsBridge(private val onNavigate: (String) -> Unit) {
             runCatching { CookieManager.getInstance().flush() }
             val code = resp.code
             // 302 的 Location 可能是相对路径，解析成绝对 URL 再交给 JS/onNavigate
-            val loc = resp.header("Location")?.let {
-                runCatching { resp.request.url.resolve(it).toString() }.getOrElse { it }
+            val loc: String? = resp.header("Location")?.let { locStr ->
+                runCatching { resp.request.url.resolve(locStr).toString() }.getOrElse { locStr }
             }
             val respBody = resp.body?.string() ?: ""
             resp.close()
