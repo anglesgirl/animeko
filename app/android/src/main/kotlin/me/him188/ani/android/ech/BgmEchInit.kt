@@ -42,7 +42,7 @@ object BgmEchInit {
         headers.forEach { (k, v) -> rb.header(k, v) }
         if (body == null && method == HttpMethod.Get) rb.get()
         else rb.method(method.value, body?.toRequestBody("application/octet-stream".toMediaTypeOrNull()))
-        val methodStr = method.value
+        val methodStr: String = method.value
         Log.i(TAG, "-> $methodStr $url")
         fileLogger.info { "BGM-ECH -> $methodStr $url" }
         try {
