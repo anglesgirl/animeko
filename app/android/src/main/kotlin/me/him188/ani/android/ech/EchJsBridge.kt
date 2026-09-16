@@ -2,24 +2,41 @@ package me.him188.ani.android.ech
 
 import android.webkit.JavascriptInterface
 import android.webkit.CookieManager
+import okhttp3.HttpUrl
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
-// 供 JS 调用的桥：表单 POST 走 ECH（不跟随 302，手动取 Location 交给页面继续跳转），
-// 不碰页面结构，输入不卡。Cookie 由 EchHttp 的 CookieJar 统一与 WebView 同步。
+// 供 JS 调用的桥：表单 POST 走 ECH（不跟随 302，手动取 Location 交给页面继续跳转）。
+// 只处理 bgm.tv/bangumi.tv 系（Kotlin 侧双重校验，杜绝 GA 等第三方 POST 被劫持）。
+// 补 Referer/Origin 头：Bangumi(Discuz) 登录 POST 防 CSRF 校验必需，缺了会直接返回登录页。
 class EchJsBridge(private val onNavigate: (String) -> Unit) {
 
     @JavascriptInterface
-    fun postForm(url: String, body: String, contentType: String?): String {
-        EchLog.log("postForm -> $url ct=$contentType bodyLen=${body.length} body=${body.take(200)}")
+    fun postForm(url: String, body: String, contentType: String?, referer: String?): String {
+        val host = runCatching { HttpUrl.Companion.toHttpUrl(url).host }.getOrNull()
+        val isBgm = host == "bgm.tv" || host?.endsWith(".bgm.tv") == true ||
+            host == "bangumi.tv" || host?.endsWith(".bangumi.tv") == true
+        if (!isBgm) {
+            EchLog.log("postForm SKIP 非bgm域名 $url")
+            return """{"code":502,"error":"not-bgm-host"}"""
+        }
+        val cookie = CookieManager.getInstance().getCookie(url)
+        EchLog.log("postForm -> $url ct=$contentType bodyLen=${body.length} cookie=${cookie?.take(100)} body=${body.take(150)}")
         return try {
             val ct = contentType ?: "application/x-www-form-urlencoded"
-            val req = Request.Builder().url(url)
+            val rb = Request.Builder().url(url)
                 .post(body.toByteArray(Charsets.UTF_8).toRequestBody(ct.toMediaTypeOrNull()))
                 .header("User-Agent", "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36")
-                .build()
-            val resp = EchHttp.post().newCall(req).execute()
+            // Discuz 防 CSRF：Referer/Origin 必须带上
+            if (!referer.isNullOrBlank()) {
+                rb.header("Referer", referer)
+                runCatching {
+                    val r = HttpUrl.Companion.toHttpUrl(referer)
+                    rb.header("Origin", "${r.scheme}://${r.host}")
+                }
+            }
+            val resp = EchHttp.post().newCall(rb.build()).execute()
             for (sc in resp.headers("Set-Cookie")) {
                 runCatching { CookieManager.getInstance().setCookie(url, sc) }
             }
@@ -31,7 +48,7 @@ class EchJsBridge(private val onNavigate: (String) -> Unit) {
             }
             val respBody = resp.body?.string() ?: ""
             resp.close()
-            EchLog.log("postForm <- $url code=$code loc=$loc respLen=${respBody.length} head=${respBody.take(120)}")
+            EchLog.log("postForm <- $url code=$code loc=$loc respLen=${respBody.length} head=${respBody.take(500)}")
             if (loc != null && code in 300..399) {
                 onNavigate(loc)
                 """{"code":$code,"location":"$loc"}"""

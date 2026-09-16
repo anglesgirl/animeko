@@ -35,12 +35,13 @@ class EchInternalBrowserActivity : ComponentActivity() {
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView, url: String) {
                     super.onPageFinished(view, url)
-                    // 劫持 fetch/XHR/表单提交，不碰输入。body 支持 FormData/URLSearchParams（登录页 AJAX 提交用 FormData，之前只处理字符串导致空 body 登录失败）
+                    // 劫持 fetch/XHR/表单提交，不碰输入。body 支持 FormData/URLSearchParams。
+                    // isBgm 只匹配 hostname：之前 indexOf 匹配整个 URL，GA 统计参数里的 dl=https://bgm.tv/... 被误判成 bgm.tv 请求，导致统计 POST 也被劫持（卡顿+空跑 DoH）
                     view.evaluateJavascript("""
                         (function(){
                           if(window.__echHooked) return; window.__echHooked=true;
                           const toAbs=(u)=>{ try{return new URL(u, location.href).href;}catch(_){return u;}};
-                          const isBgm=(u)=> u.indexOf('bgm.tv')!=-1 || u.indexOf('bangumi.tv')!=-1;
+                          const isBgm=(u)=>{ try{ const h=new URL(u, location.href).hostname; return h==='bgm.tv'||h.endsWith('.bgm.tv')||h==='bangumi.tv'||h.endsWith('.bangumi.tv'); }catch(_){ return false; } };
                           const bodyToStr=(b)=>{
                             if(typeof b==='string') return b;
                             if(b instanceof FormData) return new URLSearchParams(b).toString();
@@ -56,7 +57,7 @@ class EchInternalBrowserActivity : ComponentActivity() {
                               if(m==='POST' && isBgm(abs)){
                                 const body=init&&init.body? bodyToStr(init.body) : '';
                                 const ct=init&&init.headers? (init.headers['Content-Type']||init.headers['content-type']||'') : '';
-                                const ret=EchBridge.postForm(abs, body, ct);
+                                const ret=EchBridge.postForm(abs, body, ct, location.href);
                                 try{ const j=JSON.parse(ret); if(j.location){ location.href=j.location; return Promise.resolve(new Response('',{status:j.code})); } return Promise.resolve(new Response(j.body||'',{status:j.code, headers:{'Content-Type':'text/html'}})); }catch(_){}
                               }
                             }catch(_){}
@@ -67,7 +68,7 @@ class EchInternalBrowserActivity : ComponentActivity() {
                           XMLHttpRequest.prototype.send=function(b){
                             if(this._echM==='POST' && isBgm(this._echU)){
                               const body=b? bodyToStr(b): '';
-                              const ret=EchBridge.postForm(this._echU, body, '');
+                              const ret=EchBridge.postForm(this._echU, body, '', location.href);
                               try{ const j=JSON.parse(ret); if(j.location){ location.href=j.location; return; } }catch(_){}
                               Object.defineProperty(this,'readyState',{value:4}); Object.defineProperty(this,'status',{value:200});
                               this.dispatchEvent(new Event('load')); this.dispatchEvent(new Event('loadend')); return;
@@ -83,7 +84,7 @@ class EchInternalBrowserActivity : ComponentActivity() {
                                 const fd=new FormData(this);
                                 const ps=new URLSearchParams(fd).toString();
                                 const ct=this.enctype||'application/x-www-form-urlencoded';
-                                const ret=EchBridge.postForm(abs, ps, ct);
+                                const ret=EchBridge.postForm(abs, ps, ct, location.href);
                                 try{ const j=JSON.parse(ret); if(j.location){ location.href=j.location; return; } if(j.body!=undefined){ location.reload(); return; } }catch(_){}
                                 return;
                               }
@@ -93,13 +94,13 @@ class EchInternalBrowserActivity : ComponentActivity() {
                           document.addEventListener('submit', function(e){
                             const f=e.target; if(!(f instanceof HTMLFormElement)) return;
                             const a=f.action||location.href;
-                            if(a.indexOf('bgm.tv')==-1 && a.indexOf('bangumi.tv')==-1) return;
+                            if(!isBgm(a)) return;
                             e.preventDefault();
                             const fd=new FormData(f);
                             const ps=new URLSearchParams(fd).toString();
                             const ct=f.enctype||'application/x-www-form-urlencoded';
                             const abs=toAbs(a);
-                            const ret=EchBridge.postForm(abs, ps, ct);
+                            const ret=EchBridge.postForm(abs, ps, ct, location.href);
                             try{ const j=JSON.parse(ret); if(j.location){ location.href=j.location; return; } if(j.body!=undefined){ location.reload(); } }catch(_){}
                           }, true);
                         })();
