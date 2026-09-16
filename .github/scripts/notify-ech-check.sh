@@ -38,11 +38,8 @@ if [ "$STATUS" = "success" ]; then
     -F "document=@${APK}" \
     -F "caption=$SHORT $(basename "$APK") $HUMAN $RUN_URL" > /dev/null
 else
-  JOBS_JSON=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs" 2>/dev/null)
-  JOB_NAME=$(echo "$JOBS_JSON" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
-  JID=$(echo "$JOBS_JSON" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
-  LOGS=$(gh api "repos/${GITHUB_REPOSITORY}/actions/jobs/${JID}/logs" 2>/dev/null)
+  LOGS=$(gh run view -R "$GITHUB_REPOSITORY" "$RUN_ID" --log 2>/dev/null)
   TASK=$(echo "$LOGS" | grep -m1 -o "Task :[a-zA-Z0-9:._-]* FAILED\|Execution failed for task '[^']*'")
   ERRS=$(echo "$LOGS" | grep -m5 "e: file")
-  send_text "加密版构建失败 $SHORT SHA=$SHA RUN=${RUN_ID:-0} 任务=${JOB_NAME:-未知} ${TASK:-} ${ERRS:-无详细错误} $RUN_URL"
+  send_text "加密版构建失败 $SHORT SHA=$SHA RUN=${RUN_ID:-0} 任务=check ${TASK:-} ${ERRS:-无详细错误} $RUN_URL"
 fi
