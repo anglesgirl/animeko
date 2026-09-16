@@ -84,6 +84,12 @@
                 android:exported="false"
                 android:theme="@android:style/Theme.NoTitleBar" />
 
+        <activity
+                android:name=".activity.BangumiLoginActivity"
+                android:exported="false"
+                android:windowSoftInputMode="adjustResize"
+                android:theme="@android:style/Theme.DeviceDefault.DayNight" />
+
         <service
                 android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"
                 android:enabled="false"
