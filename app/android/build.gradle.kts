@@ -8,6 +8,7 @@
  */
 
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import java.util.Properties
 
 plugins {
     id("ani.android-application")
@@ -43,7 +44,7 @@ android {
         versionName = project.version.toString()
         // DoH 节点池（local.properties 的 echDohPool，逗号分隔；缺省公共节点；私有地址不进仓库）
         val echDohPool = (rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use {
-            java.util.Properties().apply { load(it) }.getProperty("echDohPool")
+            Properties().apply { load(it) }.getProperty("echDohPool")
         } ?: "https://1.1.1.1/dns-query,https://8.8.8.8/resolve").trim()
         buildConfigField("String", "ECH_DOH_POOL", "\"$echDohPool\"")
         ndk {
