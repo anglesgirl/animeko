@@ -98,6 +98,9 @@ class AniApplication : Application() {
         AppStartupTasks.printVersions()
         startupTimeMonitor.mark(StepName.Logging)
 
+        // ECH 传输注入（请求时 fail-closed）
+        runCatching { me.him188.ani.android.ech.BgmEchInit.install(this) }
+
         val defaultUEH = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
             logger<AniApplication>().error(e) { "!!!ANI FATAL EXCEPTION!!! ($e)" }
