@@ -852,8 +852,8 @@ workflow(
         // Including: 
         // - pushing directly to main
         // - pushing to a branch that has an associated PR
-        Push(pathsIgnore = commonIgnoredPaths),
-        PullRequest(pathsIgnore = commonIgnoredPaths),
+        Push(pathsIgnore = commonIgnoredPaths, branchesIgnore = listOf("ech-*")),
+        PullRequest(pathsIgnore = commonIgnoredPaths, branchesIgnore = listOf("ech-*")),
     ),
     sourceFile = __FILE__,
     targetFileName = "build.yml",

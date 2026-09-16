@@ -5,6 +5,8 @@
 name: 'Build'
 on:
   push:
+    branches-ignore:
+    - 'ech-*'
     paths-ignore:
     - '**/*.md'
     - '.idea/**'
@@ -13,6 +15,8 @@ on:
     - '.run/**'
     - 'scripts/*'
   pull_request:
+    branches-ignore:
+    - 'ech-*'
     paths-ignore:
     - '**/*.md'
     - '.idea/**'
