@@ -2,19 +2,53 @@ package me.him188.ani.android.ech
 
 import android.util.Base64
 import me.him188.ani.android.BuildConfig
+import okhttp3.Dns
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.json.JSONObject
-import java.net.HttpURLConnection
 import java.net.InetAddress
-import java.net.URL
 import java.net.UnknownHostException
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 // DoH 取 A 记录与 ECH 配置（dns-json），带缓存。拿不到一律抛异常。
 // 节点池来自 BuildConfig（local.properties 的 echDohPool，逗号分隔），
-// 缺省用公共节点；私有网关地址不进仓库。
+// 缺省用 Cloudflare Gateway（大陆可直连、返回 ech= 配置）。
+// 网关域名用内置 IP 直连，不依赖系统 DNS（避免 DoH 解析自身被污染的死循环）；
+// SNI 仍为域名，证书校验不受影响。
 internal object EchDoh {
+    private const val TAG = "ECH-DOH"
+
+    // Cloudflare Gateway 内置 IP（用户提供，用于解析网关域名，绕过系统 DNS 污染）
+    private val GATEWAY_IPS: List<InetAddress> = listOf(
+        "172.64.36.1", "172.64.36.2",
+        "2a06:98c1:54::72:a4b3",
+    ).mapNotNull { runCatching { InetAddress.getByName(it) }.getOrNull() }
+
+    // bgm.tv（CNAME→research.cloudflare.com）的内置 ECH 配置兜底，DoH 全挂时可用
+    private val FALLBACK_ECH: ByteArray? = runCatching {
+        Base64.decode(
+            "AEX+DQBBoQAgACD+e2S6IetnuhaljaMiPjyI4bJnjDikRM91us119cr5JAAEAAEAAQASY2xvdWRmbGFyZS1lY2guY29tAAA=",
+            Base64.DEFAULT,
+        )
+    }.getOrNull()
+
     private val pool: List<String> by lazy {
         BuildConfig.ECH_DOH_POOL.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+    }
+
+    private val dohClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .dns(object : Dns {
+                override fun lookup(hostname: String): List<InetAddress> {
+                    // Cloudflare Gateway 域名直接用内置 IP，不依赖系统 DNS（避免 DoH 解析自身被污染的死循环）
+                    if (hostname == "bkbq2r7nr6.cloudflare-gateway.com") return GATEWAY_IPS
+                    return try { Dns.SYSTEM.lookup(hostname) } catch (e: UnknownHostException) { emptyList() }
+                }
+            })
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .build()
     }
 
     private data class Entry<out T>(val value: T, val expiresAt: Long)
@@ -22,20 +56,17 @@ internal object EchDoh {
     private val echCache = ConcurrentHashMap<String, Entry<ByteArray>>()
 
     private fun get(dohUrl: String, name: String, qtype: String): JSONObject? {
-        val c = (URL("$dohUrl?name=$name&type=$qtype").openConnection() as HttpURLConnection).apply {
-            connectTimeout = 15000
-            readTimeout = 15000
-            requestMethod = "GET"
-            setRequestProperty("Accept", "application/dns-json")
-            setRequestProperty("User-Agent", "Ani-ECH/1.0")
-        }
+        val req = Request.Builder().url("$dohUrl?name=$name&type=$qtype")
+            .header("Accept", "application/dns-json")
+            .header("User-Agent", "Ani-ECH/1.0")
+            .build()
         return try {
-            if (c.responseCode != 200) return null
-            JSONObject(c.inputStream.bufferedReader().readText())
+            val resp = dohClient.newCall(req).execute()
+            val json = if (resp.code == 200) runCatching { JSONObject(resp.body?.string() ?: "") }.getOrNull() else null
+            resp.close()
+            json
         } catch (e: Exception) {
             null
-        } finally {
-            c.disconnect()
         }
     }
 
@@ -90,6 +121,13 @@ internal object EchDoh {
             } catch (e: Exception) {
                 lastErr = e
             }
+        }
+        // DoH 全挂时用内置配置兜底（仅 bgm.tv 系，其 CNAME 到 research.cloudflare.com）
+        val isBgm = host == "bgm.tv" || host.endsWith(".bgm.tv") ||
+            host == "bangumi.tv" || host.endsWith(".bangumi.tv")
+        if (isBgm && FALLBACK_ECH != null) {
+            echCache[host] = Entry(FALLBACK_ECH, System.currentTimeMillis() + 3_600_000)
+            return FALLBACK_ECH
         }
         throw lastErr ?: UnknownHostException("无ECH配置")
     }
