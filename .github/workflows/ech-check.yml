@@ -50,14 +50,16 @@ jobs:
       - name: Build ktor-client Android
         run: ./gradlew :utils:ktor-client:assembleAndroidMain --no-daemon --stacktrace 2>&1 | tee gradle-check.log; exit ${PIPESTATUS[0]}
 
-      - name: Build app debug APK
-        run: ./gradlew :app:android:assembleDebug --no-daemon --stacktrace 2>&1 | tee -a gradle-check.log; exit ${PIPESTATUS[0]}
+      - name: Build app release APK
+        run: |
+          keytool -genkey -keystore /tmp/ech-debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10950 -storepass android -keypass android -dname "CN=Android Debug,O=Android,C=US"
+          ./gradlew :app:android:assembleRelease --no-daemon --stacktrace -Pandroid.injected.signing.store.file=/tmp/ech-debug.keystore -Pandroid.injected.signing.store.password=android -Pandroid.injected.signing.key.alias=androiddebugkey -Pandroid.injected.signing.key.password=android 2>&1 | tee -a gradle-check.log; exit ${PIPESTATUS[0]}
 
-      - name: Upload debug APK
+      - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
-          name: animeko-ech-debug
-          path: app/android/build/outputs/apk/default/debug/*.apk
+          name: animeko-ech-release
+          path: app/android/build/outputs/apk/default/release/*.apk
           retention-days: 14
 
       - name: Notify build result

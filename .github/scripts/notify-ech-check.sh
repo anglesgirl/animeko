@@ -18,7 +18,7 @@ if [ "$STATUS" = "success" ]; then
   APK=""
   for pat in "*arm64-v8a*.apk" "*universal*.apk" "*.apk"; do
     # shellcheck disable=SC2086
-    for f in app/android/build/outputs/apk/default/debug/$pat; do
+    for f in app/android/build/outputs/apk/default/release/$pat app/android/build/outputs/apk/default/debug/$pat; do
       [ -s "$f" ] && { APK="$f"; break 2; }
     done
   done

@@ -11,22 +11,15 @@ package me.him188.ani.app.ui.update
 
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
-import io.ktor.client.request.parameter
 import io.ktor.client.statement.bodyAsText
-import io.ktor.http.appendPathSegments
-import kotlinx.coroutines.CancellationException
-import kotlinx.io.IOException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.content
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import me.him188.ani.app.data.network.protocol.ReleaseClass
-import me.him188.ani.app.data.network.protocol.ReleaseUpdatesDetailedResponse
 import me.him188.ani.app.platform.currentAniBuildConfig
-import me.him188.ani.app.tools.TimeFormatter
-import me.him188.ani.utils.coroutines.withExceptionCollector
 import me.him188.ani.utils.ktor.getPlatformKtorEngine
-import me.him188.ani.utils.logging.error
-import me.him188.ani.utils.logging.info
-import me.him188.ani.utils.logging.logger
-import me.him188.ani.utils.platform.currentPlatform
 
 class UpdateChecker {
     /**
@@ -36,88 +29,52 @@ class UpdateChecker {
         releaseClass: ReleaseClass,
         currentVersion: String = currentAniBuildConfig.versionName,
     ): NewVersion? {
+        // ECH 分支：只跟自家仓库要更新，不碰官方更新服务器。
+        // 自家尚无发版时返回空，不提示。
+        return kotlin.runCatching { checkForkRelease(currentVersion) }.getOrNull()
+    }
+
+    private suspend fun checkForkRelease(currentVersion: String): NewVersion? {
         HttpClient(getPlatformKtorEngine()) {
             expectSuccess = true
         }.use { client ->
-            withExceptionCollector {
-                return kotlin.runCatching {
-                    client.getVersionFromAniServer("https://danmaku-global.myani.org/", currentVersion, releaseClass)
-                        .also {
-                            logger.info { "Got latest version from global server: ${it?.name}" }
-                        }
-                }.recoverCatching { exception ->
-                    collect(exception)
-                    client.getVersionFromAniServer("https://danmaku-cn.myani.org/", currentVersion, releaseClass).also {
-                        logger.info { "Got latest version from CN server: ${it?.name}" }
-                    }
-                }.onFailure { exception ->
-                    collect(exception)
-                    if (exception is CancellationException || exception is IOException) {
-                        throwLast()
-                    }
-                    val finalException = getLast()!!
-                    logger.error(finalException) { "Failed to get latest version" }
-                    throw finalException
-                }.getOrThrow()// should not throw, because of `onFailure`   
-            }
-        }
-    }
-
-    private suspend fun HttpClient.getVersionFromAniServer(
-        baseUrl: String,
-        currentVersion: String = currentAniBuildConfig.versionName,
-        releaseClass: ReleaseClass,
-    ): NewVersion? {
-//        val versions = get(baseUrl) {
-//            url {
-//                appendPathSegments("v1/updates/incremental")
-//            }
-//            val platform = currentPlatform
-//            parameter("clientVersion", currentAniBuildConfig.versionName)
-//            parameter("clientArch", platform.arch.displayName)
-//            parameter("releaseClass", "beta")
-//        }.bodyAsChannel().toInputStream().use {
-//            json.decodeFromStream(UpdatesIncrementalResponse.serializer(), it)
-//        }.versions
-//
-//        val newestVersion = versions.lastOrNull() ?: return null
-        val updates = get(baseUrl) {
-            url {
-                appendPathSegments("v1/updates/incremental/details")
-            }
-            val platform = currentPlatform()
-            parameter("clientVersion", currentAniBuildConfig.versionName)
-            parameter("clientPlatform", platform.name.lowercase())
-            parameter("clientArch", platform.arch.displayName)
-            parameter("releaseClass", releaseClass.name)
-        }.bodyAsText().let {
-            json.decodeFromString(ReleaseUpdatesDetailedResponse.serializer(), it)
-        }.updates
-
-        if (updates.isEmpty()) {
-            return null
-        }
-
-        return updates.last().let { latest ->
-            NewVersion(
-                name = latest.version,
-                changelogs = updates.asReversed().asSequence().take(10).filter { it.version != currentVersion }.map {
-                    Changelog(it.version, formatTime(it.publishTime), it.description)
-                }.toList(),
-                downloadUrlAlternatives = latest.downloadUrlAlternatives,
-                publishedAt = formatTime(latest.publishTime),
+            val root = json.parseToJsonElement(
+                client.get("https://api.github.com/repos/anglesgirl/animeko/releases/latest").bodyAsText(),
+            ).jsonObject
+            val tag = root["tag_name"]?.jsonPrimitive?.content ?: return null
+            if (!isNewerVersion(tag, currentVersion)) return null
+            val apkUrl = root["assets"]?.jsonArray
+                ?.mapNotNull { it.jsonObject["browser_download_url"]?.jsonPrimitive?.content }
+                .orEmpty()
+                .firstOrNull { it.endsWith("-arm64-v8a.apk") }
+                ?: return null
+            val body = root["body"]?.jsonPrimitive?.content.orEmpty()
+            val published = root["published_at"]?.jsonPrimitive?.content.orEmpty()
+            return NewVersion(
+                name = tag,
+                changelogs = listOf(Changelog(tag, published, body)),
+                downloadUrlAlternatives = listOf(apkUrl),
+                publishedAt = published,
             )
         }
     }
 
+    // 标签如 ech-6.2.0-1；取数字段逐段比，标签新才提示。
+    private fun isNewerVersion(tag: String, current: String): Boolean {
+        fun nums(s: String) = Regex("\\d+").findAll(s).map { it.value.toInt() }.toList()
+        val a = nums(tag)
+        val b = nums(current)
+        val n = maxOf(a.size, b.size)
+        for (i in 0 until n) {
+            val d = (a.getOrElse(i) { 0 }) - (b.getOrElse(i) { 0 })
+            if (d != 0) return d > 0
+        }
+        return tag != current
+    }
+
     private companion object {
-        private val logger = logger<UpdateChecker>()
         private val json = Json {
             ignoreUnknownKeys = true
         }
-
-        private fun formatTime(
-            seconds: Long,
-        ): String = kotlin.runCatching { TimeFormatter().format(seconds * 1000) }.getOrElse { seconds.toString() }
     }
 }

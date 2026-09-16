@@ -57,3 +57,7 @@
 -renamesourcefileattribute SourceFile
 -keepnames class me.him188.ani.** { *; }
 -keepnames class ** { *; } # Keep all names as this only increases pacakge size by a few MBs, but significantly helps with debugging.
+# ECH：Conscrypt 经反射读取该方法，裁掉则加密静默失效
+-keepclassmembers class me.him188.ani.android.ech.ConscryptEch$PolicyTrustManager {
+    public org.conscrypt.NetworkSecurityPolicy getNetworkSecurityPolicy();
+}
