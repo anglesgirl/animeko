@@ -95,12 +95,10 @@ buildConfig {
     // Desktop platform configuration
     fun BuildConfigPlatform.firebaseFields() {
         fun getProp(name: String): String {
-            return if (enableFirebase) {
-                getProperty(name).also {
-                    check(it.isNotBlank()) { "Local property '$name' is not set. You must either set it or disable `ani.enable.firebase`." }
-                }
-            } else {
-                ""
+            if (!enableFirebase) return ""
+            // 桌面专用的统计钥匙缺失时只警告留空，不拦手机构建（手机只用钥匙文件）
+            return getPropertyOrNull(name)?.takeIf { it.isNotBlank() } ?: "".also {
+                logger.warn("Local property '$name' is not set. Desktop Firebase field left blank.")
             }
         }
         stringField("firebaseGAAppId", getProp("firebase.ga.app.id"), isOverride = false)
