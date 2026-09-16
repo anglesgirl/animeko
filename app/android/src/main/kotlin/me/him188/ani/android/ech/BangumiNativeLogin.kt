@@ -63,7 +63,9 @@ object BangumiNativeLogin {
                 if (code1 != 200) return@withContext Result.failure(IllegalStateException("获取登录页失败: HTTP $code1"))
                 val formhash = findFormhash(html1)
                     ?: return@withContext Result.failure(IllegalStateException("登录页未找到 formhash（可能已被风控/验证码拦截）"))
-                EchLog.log("NativeLogin 1 OK url=$pageUrl1 formhash=$formhash htmlLen=${html1.length}")
+                // 诊断：登录页是否要求验证码（Discuz seccode / reCAPTCHA）
+                val seccode = Regex("""(seccode|seccodehash|captcha|recaptcha|geetest)""", RegexOption.IGNORE_CASE).find(html1)?.value
+                EchLog.log("NativeLogin 1 OK url=$pageUrl1 formhash=$formhash htmlLen=${html1.length} seccode=$seccode")
 
                 // 2. POST 登录（Discuz FollowTheRabbit）
                 onStep("提交账号密码")
@@ -82,10 +84,13 @@ object BangumiNativeLogin {
                 val body2 = resp2.body?.string() ?: ""
                 resp2.close()
                 if (code2 != 302 || loc2.isNullOrBlank()) {
-                    val hint = Regex("""(?:class|id)=["'][^"']*(?:alert|error|notice|flash)[^"']*["'][^>]*>([^<]{1,120})""", RegexOption.IGNORE_CASE)
+                    // Discuz/Bangumi 错误提示常见结构：<div class="alert alert-error">..</div> / <div class="msg">..</div> / <div id="message">..</div>
+                    val hint = Regex("""<(?:div|p|span|h\d)[^>]*(?:class|id)=["'][^"']*(?:alert|error|notice|flash|msg|message|tip)[^"']*["'][^>]*>\s*([^<]{1,120})""", RegexOption.IGNORE_CASE)
                         .find(body2)?.groupValues?.get(1)?.trim()
-                    val msg = hint ?: "登录失败: HTTP $code2（可能账号密码错误或需要验证码）"
-                    EchLog.log("NativeLogin 2 FAIL code=$code2 hint=$hint bodyLen=${body2.length}")
+                    val hint2 = hint ?: Regex("""<p[^>]*>\s*([^<]{2,80}(?:失败|错误|不正确|错误|验证码|输入|错误信息)[^<]{0,80})\s*</p>""", RegexOption.IGNORE_CASE)
+                        .find(body2)?.groupValues?.get(1)?.trim()
+                    val msg = hint2 ?: "登录失败: HTTP $code2（可能账号密码错误或需要验证码）"
+                    EchLog.log("NativeLogin 2 FAIL code=$code2 hint=$hint2 bodyLen=${body2.length} body=${body2.take(1500)}")
                     return@withContext Result.failure(IllegalStateException(msg))
                 }
                 val confirmUrl = runCatching { "https://bgm.tv".toHttpUrl().resolve(loc2).toString() }.getOrElse { loc2 }
