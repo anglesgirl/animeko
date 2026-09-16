@@ -58,15 +58,29 @@ class EchInternalBrowserActivity : ComponentActivity() {
                           XMLHttpRequest.prototype.open=function(m,u){ this._echM=m; this._echU=toAbs(u); return origOpen.apply(this, arguments); };
                           XMLHttpRequest.prototype.send=function(b){
                             if(this._echM==='POST' && isBgm(this._echU)){
-                              const ct=this.getRequestHeader? '': ''; // 简化：不改头
                               const body=b? String(b): '';
                               const ret=EchBridge.postForm(this._echU, body, '');
                               try{ const j=JSON.parse(ret); if(j.location){ location.href=j.location; return; } }catch(_){}
-                              // 模拟 XHR 完成，避免页面卡死
                               Object.defineProperty(this,'readyState',{value:4}); Object.defineProperty(this,'status',{value:200});
                               this.dispatchEvent(new Event('load')); this.dispatchEvent(new Event('loadend')); return;
                             }
                             return origSend.apply(this, arguments);
+                          };
+                          const origSubmit=HTMLFormElement.prototype.submit;
+                          HTMLFormElement.prototype.submit=function(){
+                            try{
+                              const a=this.action||location.href;
+                              const abs=toAbs(a);
+                              if(isBgm(abs)){
+                                const fd=new FormData(this);
+                                const ps=new URLSearchParams(fd).toString();
+                                const ct=this.enctype||'application/x-www-form-urlencoded';
+                                const ret=EchBridge.postForm(abs, ps, ct);
+                                try{ const j=JSON.parse(ret); if(j.location){ location.href=j.location; return; } if(j.body!=undefined){ document.open(); document.write(j.body); document.close(); return; } }catch(_){}
+                                return;
+                              }
+                            }catch(_){}
+                            return origSubmit.apply(this, arguments);
                           };
                           document.addEventListener('submit', function(e){
                             const f=e.target; if(!(f instanceof HTMLFormElement)) return;
