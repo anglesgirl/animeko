@@ -20,5 +20,13 @@ jobs:
           echo "===== login form ====="
           grep -oE '<form[^>]*>' /tmp/bgm_login.html | head -5
           grep -oE '<input[^>]*>' /tmp/bgm_login.html | grep -viE 'hidden|checkbox|submit' | head -15
-          echo "===== first_field hint ====="
-          grep -oiE 'first_field_id[^,}]{0,60}' /tmp/bgm_login.html | head -3
+          echo "===== captcha image / seccodehash ====="
+          grep -oiE '<img[^>]*(seccode|captcha|verify)[^>]*>' /tmp/bgm_login.html | head -5
+          grep -oiE '(seccodehash|idhash|seccode)[^;<]{0,100}' /tmp/bgm_login.html | head -10
+          echo "===== JS vars ====="
+          grep -oE 'var [a-zA-Z_]*hash[a-zA-Z_]* ?= ?[^;]{0,60}' /tmp/bgm_login.html | head -5
+          grep -oE 'seccode[^"'"'"']*["'"'"'][^"'"'"']*["'"'"']' /tmp/bgm_login.html | head -5
+          echo "===== captcha container ====="
+          grep -oiE '.{80}captcha.{120}' /tmp/bgm_login.html | head -8
+          echo "===== misc.php refs ====="
+          grep -oE 'misc\.php[^"'"'"' <]{0,120}' /tmp/bgm_login.html | head -10
