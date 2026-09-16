@@ -22,7 +22,7 @@ class EchJsBridge(private val onNavigate: (String) -> Unit) {
             return """{"code":502,"error":"not-bgm-host"}"""
         }
         val cookie = CookieManager.getInstance().getCookie(url)
-        EchLog.log("postForm -> $url ct=$contentType bodyLen=${body.length} cookie=${cookie?.take(100)} body=${body.take(150)}")
+        EchLog.log("postForm -> $url ct=$contentType bodyLen=${body.length} cookie=${cookie?.take(100)} body=${body.take(800)}")
         return try {
             val ct = contentType ?: "application/x-www-form-urlencoded"
             val rb = Request.Builder().url(url)
