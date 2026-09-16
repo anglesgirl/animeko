@@ -21,6 +21,8 @@ class EchInternalBrowserActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val target = intent.getStringExtra(EXTRA_URL) ?: run { finish(); return }
+        me.him188.ani.android.ech.EchLog.init(applicationContext)
+        me.him188.ani.android.ech.EchLog.log("EchInternalBrowserActivity open: $target")
         val wv = WebView(this).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
@@ -33,12 +35,18 @@ class EchInternalBrowserActivity : ComponentActivity() {
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView, url: String) {
                     super.onPageFinished(view, url)
-                    // 劫提交与 fetch/XHR，不碰输入
+                    // 劫持 fetch/XHR/表单提交，不碰输入。body 支持 FormData/URLSearchParams（登录页 AJAX 提交用 FormData，之前只处理字符串导致空 body 登录失败）
                     view.evaluateJavascript("""
                         (function(){
                           if(window.__echHooked) return; window.__echHooked=true;
                           const toAbs=(u)=>{ try{return new URL(u, location.href).href;}catch(_){return u;}};
                           const isBgm=(u)=> u.indexOf('bgm.tv')!=-1 || u.indexOf('bangumi.tv')!=-1;
+                          const bodyToStr=(b)=>{
+                            if(typeof b==='string') return b;
+                            if(b instanceof FormData) return new URLSearchParams(b).toString();
+                            if(b instanceof URLSearchParams) return b.toString();
+                            return '';
+                          };
                           const origFetch=window.fetch;
                           window.fetch=function(input, init){
                             try{
@@ -46,7 +54,7 @@ class EchInternalBrowserActivity : ComponentActivity() {
                               const abs=toAbs(u);
                               const m=(init&&init.method||'GET').toUpperCase();
                               if(m==='POST' && isBgm(abs)){
-                                const body=init&&init.body? (typeof init.body==='string'? init.body : '') : '';
+                                const body=init&&init.body? bodyToStr(init.body) : '';
                                 const ct=init&&init.headers? (init.headers['Content-Type']||init.headers['content-type']||'') : '';
                                 const ret=EchBridge.postForm(abs, body, ct);
                                 try{ const j=JSON.parse(ret); if(j.location){ location.href=j.location; return Promise.resolve(new Response('',{status:j.code})); } return Promise.resolve(new Response(j.body||'',{status:j.code, headers:{'Content-Type':'text/html'}})); }catch(_){}
@@ -58,7 +66,7 @@ class EchInternalBrowserActivity : ComponentActivity() {
                           XMLHttpRequest.prototype.open=function(m,u){ this._echM=m; this._echU=toAbs(u); return origOpen.apply(this, arguments); };
                           XMLHttpRequest.prototype.send=function(b){
                             if(this._echM==='POST' && isBgm(this._echU)){
-                              const body=b? String(b): '';
+                              const body=b? bodyToStr(b): '';
                               const ret=EchBridge.postForm(this._echU, body, '');
                               try{ const j=JSON.parse(ret); if(j.location){ location.href=j.location; return; } }catch(_){}
                               Object.defineProperty(this,'readyState',{value:4}); Object.defineProperty(this,'status',{value:200});
@@ -76,7 +84,7 @@ class EchInternalBrowserActivity : ComponentActivity() {
                                 const ps=new URLSearchParams(fd).toString();
                                 const ct=this.enctype||'application/x-www-form-urlencoded';
                                 const ret=EchBridge.postForm(abs, ps, ct);
-                                try{ const j=JSON.parse(ret); if(j.location){ location.href=j.location; return; } if(j.body!=undefined){ document.open(); document.write(j.body); document.close(); return; } }catch(_){}
+                                try{ const j=JSON.parse(ret); if(j.location){ location.href=j.location; return; } if(j.body!=undefined){ location.reload(); return; } }catch(_){}
                                 return;
                               }
                             }catch(_){}
@@ -92,7 +100,7 @@ class EchInternalBrowserActivity : ComponentActivity() {
                             const ct=f.enctype||'application/x-www-form-urlencoded';
                             const abs=toAbs(a);
                             const ret=EchBridge.postForm(abs, ps, ct);
-                            try{ const j=JSON.parse(ret); if(j.location){ location.href=j.location; return; } if(j.body!=undefined){ document.open(); document.write(j.body); document.close(); } }catch(_){}
+                            try{ const j=JSON.parse(ret); if(j.location){ location.href=j.location; return; } if(j.body!=undefined){ location.reload(); } }catch(_){}
                           }, true);
                         })();
                     """.trimIndent(), null)
@@ -126,11 +134,13 @@ class EchInternalBrowserActivity : ComponentActivity() {
                     } catch (e: Exception) {
                         // fail-closed：ECH 通道失败时返回 502 错误页，绝不回落 WebView 明文直连（明文 SNI 会被墙 RST）
                         android.util.Log.w("BGM-ECH", "ECH GET 失败 $url: ${e.message}")
+                        me.him188.ani.android.ech.EchLog.log("ECH GET 失败 $url: ${e.javaClass.simpleName}: ${e.message}")
+                        val logTail = me.him188.ani.android.ech.EchLog.tail(50)
                         WebResourceResponse(
                             "text/plain", "utf-8", 502, "ECH Failed",
                             mapOf("Content-Type" to "text/plain; charset=utf-8"),
                             java.io.ByteArrayInputStream(
-                                ("ECH 通道失败，无法加载 $url\n\n${e.javaClass.simpleName}: ${e.message}").toByteArray()
+                                ("ECH 通道失败，无法加载 $url\n\n${e.javaClass.simpleName}: ${e.message}\n\n--- 最近日志 ---\n$logTail\n\n日志文件: ${me.him188.ani.android.ech.EchLog.path()}").toByteArray()
                             ),
                         )
                     }

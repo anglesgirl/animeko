@@ -45,6 +45,7 @@ object BgmEchInit {
         else rb.method(methodStr, body?.toRequestBody("application/octet-stream".toMediaTypeOrNull()))
         Log.i(TAG, "-> $methodStr $url")
         fileLogger.info("BGM-ECH -> $methodStr $url")
+        EchLog.log("BgmEch.fetch -> $methodStr $url body=${body?.size ?: 0}B")
         try {
             val client = if (method == HttpMethod.Get || method == HttpMethod.Head) EchHttp.get() else EchHttp.post()
             client.newCall(rb.build()).execute().use { resp ->
@@ -53,9 +54,11 @@ object BgmEchInit {
                 for (i in 0 until resp.headers.size) hs.add(resp.headers.name(i) to resp.headers.value(i))
                 Log.i(TAG, "<- ${resp.code} $url")
                 fileLogger.info("BGM-ECH <- ${resp.code} $url")
+                EchLog.log("BgmEch.fetch <- ${resp.code} $url len=${bytes.size}")
                 BgmEchResult(resp.code, hs, bytes)
             }
         } catch (e: Exception) {
+            EchLog.log("BgmEch.fetch ERR $methodStr $url: ${e.javaClass.simpleName}: ${e.message}")
             throw if (e is IOException) e else IOException("ECH 请求异常: ${e.message}")
         }
     }

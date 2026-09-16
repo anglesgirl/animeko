@@ -12,6 +12,7 @@ class EchJsBridge(private val onNavigate: (String) -> Unit) {
 
     @JavascriptInterface
     fun postForm(url: String, body: String, contentType: String?): String {
+        EchLog.log("postForm -> $url ct=$contentType bodyLen=${body.length} body=${body.take(200)}")
         return try {
             val ct = contentType ?: "application/x-www-form-urlencoded"
             val req = Request.Builder().url(url)
@@ -30,6 +31,7 @@ class EchJsBridge(private val onNavigate: (String) -> Unit) {
             }
             val respBody = resp.body?.string() ?: ""
             resp.close()
+            EchLog.log("postForm <- $url code=$code loc=$loc respLen=${respBody.length} head=${respBody.take(120)}")
             if (loc != null && code in 300..399) {
                 onNavigate(loc)
                 """{"code":$code,"location":"$loc"}"""
@@ -38,6 +40,7 @@ class EchJsBridge(private val onNavigate: (String) -> Unit) {
                 """{"code":$code,"body":${org.json.JSONObject.quote(respBody)}}"""
             }
         } catch (e: Exception) {
+            EchLog.log("postForm ERR $url: ${e.javaClass.simpleName}: ${e.message}")
             """{"code":502,"error":${org.json.JSONObject.quote(e.message ?: "fail")}}"""
         }
     }

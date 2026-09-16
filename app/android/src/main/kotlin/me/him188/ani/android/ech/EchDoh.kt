@@ -64,8 +64,10 @@ internal object EchDoh {
             val resp = dohClient.newCall(req).execute()
             val json = if (resp.code == 200) runCatching { JSONObject(resp.body?.string() ?: "") }.getOrNull() else null
             resp.close()
+            if (json == null) EchLog.log("DoH GET fail $dohUrl name=$name type=$qtype code=${resp.code}")
             json
         } catch (e: Exception) {
+            EchLog.log("DoH GET ERR $dohUrl name=$name type=$qtype: ${e.javaClass.simpleName}: ${e.message}")
             null
         }
     }
@@ -90,11 +92,14 @@ internal object EchDoh {
                 }
                 if (out.isEmpty()) throw UnknownHostException("DoH无有效IP")
                 aCache[host] = Entry(out, System.currentTimeMillis() + 60_000)
+                EchLog.log("DoH A OK $host -> ${out.joinToString { it.hostAddress }}")
                 return out
             } catch (e: Exception) {
                 lastErr = e
+                EchLog.log("DoH A try fail $url $host: ${e.message}")
             }
         }
+        EchLog.log("DoH A ALL FAIL $host")
         throw lastErr ?: UnknownHostException("DoH全灭")
     }
 
@@ -115,11 +120,14 @@ internal object EchDoh {
                     val raw = Base64.decode(b64, Base64.DEFAULT)
                     if (raw.size > 8) {
                         echCache[host] = Entry(raw, System.currentTimeMillis() + 1_800_000)
+                        EchLog.log("DoH ECH OK $host (len=${raw.size}) via $url")
                         return raw
                     }
                 }
+                EchLog.log("DoH ECH no ech= in $url for $host")
             } catch (e: Exception) {
                 lastErr = e
+                EchLog.log("DoH ECH try fail $url $host: ${e.message}")
             }
         }
         // DoH 全挂时用内置配置兜底（仅 bgm.tv 系，其 CNAME 到 research.cloudflare.com）
@@ -127,8 +135,10 @@ internal object EchDoh {
             host == "bangumi.tv" || host.endsWith(".bangumi.tv")
         if (isBgm && FALLBACK_ECH != null) {
             echCache[host] = Entry(FALLBACK_ECH, System.currentTimeMillis() + 3_600_000)
+            EchLog.log("DoH ECH use FALLBACK for $host")
             return FALLBACK_ECH
         }
+        EchLog.log("DoH ECH ALL FAIL $host")
         throw lastErr ?: UnknownHostException("无ECH配置")
     }
 }
