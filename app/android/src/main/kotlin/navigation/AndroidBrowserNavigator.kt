@@ -29,7 +29,7 @@ class AndroidBrowserNavigator : BrowserNavigator {
 
     override fun openBrowser(context: Context, url: String): OpenBrowserResult {
         // BGM 相关走站内 ECH 浏览器（外部浏览器 SNI 明文会被墙）
-        if (isBgmUrl(url) && runCatching { me.him188.ani.android.ech.EchProxyServer.isRunning() }.getOrDefault(false)) {
+        if (isBgmUrl(url)) {
             try {
                 val i = Intent(context, me.him188.ani.android.activity.EchInternalBrowserActivity::class.java).apply {
                     putExtra(me.him188.ani.android.activity.EchInternalBrowserActivity.EXTRA_URL, url)
