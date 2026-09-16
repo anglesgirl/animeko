@@ -33,10 +33,41 @@ class EchInternalBrowserActivity : ComponentActivity() {
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView, url: String) {
                     super.onPageFinished(view, url)
-                    // 仅劫提交，不碰输入
+                    // 劫提交与 fetch/XHR，不碰输入
                     view.evaluateJavascript("""
                         (function(){
                           if(window.__echHooked) return; window.__echHooked=true;
+                          const toAbs=(u)=>{ try{return new URL(u, location.href).href;}catch(_){return u;}};
+                          const isBgm=(u)=> u.indexOf('bgm.tv')!=-1 || u.indexOf('bangumi.tv')!=-1;
+                          const origFetch=window.fetch;
+                          window.fetch=function(input, init){
+                            try{
+                              const u=typeof input==='string'? input : input.url;
+                              const abs=toAbs(u);
+                              const m=(init&&init.method||'GET').toUpperCase();
+                              if(m==='POST' && isBgm(abs)){
+                                const body=init&&init.body? (typeof init.body==='string'? init.body : '') : '';
+                                const ct=init&&init.headers? (init.headers['Content-Type']||init.headers['content-type']||'') : '';
+                                const ret=EchBridge.postForm(abs, body, ct);
+                                try{ const j=JSON.parse(ret); if(j.location){ location.href=j.location; return Promise.resolve(new Response('',{status:j.code})); } return Promise.resolve(new Response(j.body||'',{status:j.code, headers:{'Content-Type':'text/html'}})); }catch(_){}
+                              }
+                            }catch(_){}
+                            return origFetch.apply(this, arguments);
+                          };
+                          const origOpen=XMLHttpRequest.prototype.open, origSend=XMLHttpRequest.prototype.send;
+                          XMLHttpRequest.prototype.open=function(m,u){ this._echM=m; this._echU=toAbs(u); return origOpen.apply(this, arguments); };
+                          XMLHttpRequest.prototype.send=function(b){
+                            if(this._echM==='POST' && isBgm(this._echU)){
+                              const ct=this.getRequestHeader? '': ''; // 简化：不改头
+                              const body=b? String(b): '';
+                              const ret=EchBridge.postForm(this._echU, body, '');
+                              try{ const j=JSON.parse(ret); if(j.location){ location.href=j.location; return; } }catch(_){}
+                              // 模拟 XHR 完成，避免页面卡死
+                              Object.defineProperty(this,'readyState',{value:4}); Object.defineProperty(this,'status',{value:200});
+                              this.dispatchEvent(new Event('load')); this.dispatchEvent(new Event('loadend')); return;
+                            }
+                            return origSend.apply(this, arguments);
+                          };
                           document.addEventListener('submit', function(e){
                             const f=e.target; if(!(f instanceof HTMLFormElement)) return;
                             const a=f.action||location.href;
@@ -45,7 +76,7 @@ class EchInternalBrowserActivity : ComponentActivity() {
                             const fd=new FormData(f);
                             const ps=new URLSearchParams(fd).toString();
                             const ct=f.enctype||'application/x-www-form-urlencoded';
-                            const abs=(function(u){ try{return new URL(u, location.href).href;}catch(_){return u;}})(a);
+                            const abs=toAbs(a);
                             const ret=EchBridge.postForm(abs, ps, ct);
                             try{ const j=JSON.parse(ret); if(j.location){ location.href=j.location; return; } if(j.body!=undefined){ document.open(); document.write(j.body); document.close(); } }catch(_){}
                           }, true);
