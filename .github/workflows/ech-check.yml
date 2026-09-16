@@ -19,6 +19,7 @@ jobs:
           ECH_DOH_POOL: ${{ secrets.ECH_DOH_POOL }}
         run: |
           if [ -n "$ECH_DOH_POOL" ]; then echo "echDohPool=$ECH_DOH_POOL" > local.properties; fi
+          echo "ani.android.debug.applicationIdSuffix=" >> local.properties
 
       - name: Write Firebase config
         env:
