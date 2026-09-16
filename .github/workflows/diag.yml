@@ -13,3 +13,7 @@ jobs:
           grep -oE 'src="[^"]+"' /tmp/bgm_login.html | head -20
           echo "===== INLINE JS captcha lines ====="
           grep -nE 'captcha|seccode|idhash|challenge' /tmp/bgm_login.html | head -20
+          echo "===== FETCH JS ====="
+          curl -s -A "$UA" -b /tmp/bgm_cookies.txt "https://bgm.tv/min/g=js?r771" -o /tmp/bgm_js.js -w "HTTP=%{http_code} size=%{size_download}\n"
+          echo "===== JS captcha logic ====="
+          grep -oE '.{0,150}captcha.{0,250}' /tmp/bgm_js.js | head -15
