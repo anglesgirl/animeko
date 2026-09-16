@@ -26,7 +26,16 @@ jobs:
           echo "===== JS vars ====="
           grep -oE 'var [a-zA-Z_]*hash[a-zA-Z_]* ?= ?[^;]{0,60}' /tmp/bgm_login.html | head -5
           grep -oE 'seccode[^"'"'"']*["'"'"'][^"'"'"']*["'"'"']' /tmp/bgm_login.html | head -5
-          echo "===== captcha container ====="
-          grep -oiE '.{80}captcha.{120}' /tmp/bgm_login.html | head -8
-          echo "===== misc.php refs ====="
-          grep -oE 'misc\.php[^"'"'"' <]{0,120}' /tmp/bgm_login.html | head -10
+          echo "===== scripts ====="
+          grep -oE '<script[^>]*src="[^"]+"' /tmp/bgm_login.html | head -15
+          echo "===== captcha JS block (3000 chars around captcha) ====="
+          python3 - <<'PY'
+import re
+h = open('/tmp/bgm_login.html', encoding='utf-8', errors='ignore').read()
+i = h.lower().find('captcha')
+while i != -1 and i < len(h):
+    print("---- around", i, "----")
+    print(h[max(0,i-600):i+900].replace('\n',' ')[:1500])
+    i = h.lower().find('captcha', i+1)
+    if i > 20000: break
+PY
