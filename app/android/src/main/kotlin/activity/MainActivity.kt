@@ -64,7 +64,7 @@ class MainActivity : AniComponentActivity() {
             // 把 code 提交给后端完成绑定，App 的 OAuth 轮询(getResult)随后自动拿到 token
             val code = data.getQueryParameter("code") ?: return
             val state = data.getQueryParameter("state") ?: ""
-            logger.info { "Bangumi OAuth callback: code=${code.take(8)}... state=$state" }
+            logger.info("Bangumi OAuth callback: code=${code.take(8)}... state=$state")
             lifecycleScope.launch {
                 try {
                     aniApiProvider.oauthApi.invoke {
