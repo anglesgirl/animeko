@@ -1,6 +1,7 @@
 package me.him188.ani.android.activity
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.os.Bundle
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
@@ -46,9 +47,17 @@ class EchInternalBrowserActivity : ComponentActivity() {
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                     val u = request.url?.toString() ?: return false
-                    // 跳到 api.animeko.org = 授权完成（302 放行原生）；其余(127.0.0.1)照常
-                    if (u.contains("api.animeko.org")) {
-                        me.him188.ani.android.ech.EchLog.log("授权回调: $u")
+                    // 授权完成 302 到 ani://bangumi-oauth-callback?code=..&state=..
+                    // WebView 不认自定义 scheme，交给 App（MainActivity 注册了 intent-filter，会提交 code 完成绑定）
+                    if (u.startsWith("ani://")) {
+                        me.him188.ani.android.ech.EchLog.log("授权回调(ani): $u")
+                        runCatching {
+                            startActivity(Intent(Intent.ACTION_VIEW, request.url))
+                        }.onFailure {
+                            me.him188.ani.android.ech.EchLog.log("启动 ani:// 失败: $it")
+                        }
+                        finish()
+                        return true
                     }
                     return false
                 }

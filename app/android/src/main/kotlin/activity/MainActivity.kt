@@ -48,6 +48,7 @@ class MainActivity : AniComponentActivity() {
     private val aniNavigator = AniNavigator()
 
     private val externalContentProviderFactory: ExternalContentProviderFactory by inject()
+    private val aniApiProvider: me.him188.ani.app.data.network.AniApiProvider by inject()
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -58,6 +59,25 @@ class MainActivity : AniComponentActivity() {
     private fun handleStartIntent(intent: Intent) {
         val data = intent.data ?: return
         if (data.scheme != "ani") return
+        if (data.host == "bangumi-oauth-callback") {
+            // 站内浏览器授权完成后 302 到 ani://bangumi-oauth-callback?code=..&state=..
+            // 把 code 提交给后端完成绑定，App 的 OAuth 轮询(getResult)随后自动拿到 token
+            val code = data.getQueryParameter("code") ?: return
+            val state = data.getQueryParameter("state") ?: ""
+            logger.info { "Bangumi OAuth callback: code=${code.take(8)}... state=$state" }
+            lifecycleScope.launch {
+                try {
+                    aniApiProvider.oauthApi.invoke {
+                        bangumiOauthCallback(code, state)
+                    }
+                    Toast.makeText(this@MainActivity, "Bangumi 授权成功", Toast.LENGTH_LONG).show()
+                } catch (e: Exception) {
+                    logger.error(e) { "提交 Bangumi OAuth code 失败" }
+                    Toast.makeText(this@MainActivity, "Bangumi 授权提交失败", Toast.LENGTH_LONG).show()
+                }
+            }
+            return
+        }
         if (data.host == "subjects") {
             val id = data.pathSegments.getOrNull(0)?.toIntOrNull() ?: return
             lifecycleScope.launch {
