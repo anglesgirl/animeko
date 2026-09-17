@@ -28,18 +28,18 @@ class AndroidBrowserNavigator : BrowserNavigator {
     }
 
     override fun openBrowser(context: Context, url: String): OpenBrowserResult {
-        // BGM 相关走原生 ECH 登录：账号+密码+验证码，字段对齐真实请求(登录POST含captcha_challenge_field+授权确认POST)。
+        // BGM 相关走站内 ECH 浏览器（WebView）：页面由 ECH 通道加载（GET 拦截+POST JS桥），
+        // 登录页的图形验证码由页面 JS 正常渲染显示，用户在页面内完成登录+授权。
         // 外部浏览器 SNI 明文会被墙，不能直接用。
         if (isBgmUrl(url)) {
             try {
-                val i = Intent(context, me.him188.ani.android.activity.BangumiLoginActivity::class.java).apply {
-                    putExtra(me.him188.ani.android.activity.BangumiLoginActivity.EXTRA_URL, url)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                val i = Intent(context, me.him188.ani.android.activity.EchInternalBrowserActivity::class.java).apply {
+                    putExtra(me.him188.ani.android.activity.EchInternalBrowserActivity.EXTRA_URL, url)
                 }
                 context.startActivity(i)
                 return OpenBrowserResult.Success
             } catch (e: Exception) {
-                logger.warn("原生 ECH 登录页打开失败，回落外部", e)
+                logger.warn("ECH 内置浏览器打开失败，回落外部", e)
             }
         }
         val lastEx: Exception
