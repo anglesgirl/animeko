@@ -94,6 +94,10 @@ object EchLocalProxy {
             headers.forEach { (k, v) ->
                 when (k) {
                     "host", "content-length", "cookie", "connection", "accept-encoding", "transfer-encoding" -> {}
+                    // Discuz 防 CSRF：Referer/Origin 必须是 bgm.tv 域。WebView 的 Referer 是
+                    // http://127.0.0.1:8888/...（本地），必须重写回 https://bgm.tv/...，否则"来路不正确"
+                    "referer" -> rb.header(k, rewriteReferer(v))
+                    "origin" -> rb.header(k, v.replace("http://127.0.0.1:$PORT", "https://$TARGET_HOST").replace("http://127.0.0.1", "https://$TARGET_HOST"))
                     else -> runCatching { rb.header(k, v) }
                 }
             }
@@ -161,6 +165,10 @@ object EchLocalProxy {
             else -> loc  // 外部域（api.animeko.org 等），原样放行
         }
     }
+
+    private fun rewriteReferer(ref: String): String =
+        ref.replace("http://127.0.0.1:$PORT", "https://$TARGET_HOST")
+            .replace("http://127.0.0.1", "https://$TARGET_HOST")
 
     private fun storeSetCookie(sc: String) {
         val eq = sc.indexOf('=')
