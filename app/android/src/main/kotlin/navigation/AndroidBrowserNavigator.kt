@@ -21,10 +21,27 @@ import me.him188.ani.utils.logging.logger
 class AndroidBrowserNavigator : BrowserNavigator {
     private val logger = logger<AndroidBrowserNavigator>()
 
+    private fun isBgmUrl(url: String): Boolean {
+        val h = runCatching { url.toUri().host?.lowercase()?.trimEnd('.') }.getOrNull() ?: return false
+        return h == "bgm.tv" || h.endsWith(".bgm.tv") || h == "bangumi.tv" || h.endsWith(".bangumi.tv") ||
+            h == "api.bgm.tv" || h.endsWith(".api.bgm.tv") || h == "next.bgm.tv" || h.endsWith(".next.bgm.tv")
+    }
+
     override fun openBrowser(context: Context, url: String): OpenBrowserResult {
-        // Custom Tab(系统浏览器, 共享 Chrome 登录态)：用户已在 Chrome 登录过 bgm.tv，
-        // 授权页直接显示"授权"按钮(已登录)，无登录表单/验证码，点授权即完成。
-        // 不走站内 ECH WebView：Discuz 登录表单含验证码且提交时会被刷新，无法可靠自动提交。
+        // bgm.tv SNI 阻断被墙，系统浏览器(Custom Tab)无 ECH 打不开，必须走站内浏览器：
+        // WebView 打开 http://127.0.0.1:8888/...（进程内 Conscrypt ECH 本地代理），
+        // 页面/验证码/表单全部浏览器原生，代理用 ECH 转发 bgm.tv，302 放行 api.animeko.org 完成绑定。
+        if (isBgmUrl(url)) {
+            try {
+                val i = Intent(context, me.him188.ani.android.activity.EchInternalBrowserActivity::class.java).apply {
+                    putExtra(me.him188.ani.android.activity.EchInternalBrowserActivity.EXTRA_URL, url)
+                }
+                context.startActivity(i)
+                return OpenBrowserResult.Success
+            } catch (e: Exception) {
+                logger.warn("ECH 站内浏览器打开失败", e)
+            }
+        }
         val lastEx: Exception
 
         try {
