@@ -45,10 +45,31 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
+      - name: Setup release signing keystore (固定签名，所有版本同一 keystore)
+        env:
+          ECH_KEYSTORE_BASE64: ${{ secrets.ECH_KEYSTORE_BASE64 }}
+          ECH_KEYSTORE_PASSWORD: ${{ secrets.ECH_KEYSTORE_PASSWORD }}
+          ECH_KEYSTORE_ALIAS: ${{ secrets.ECH_KEYSTORE_ALIAS }}
+        run: |
+          # 固定 release keystore：解码后所有版本用同一签名，保证用户可覆盖安装升级
+          if [ -n "$ECH_KEYSTORE_BASE64" ]; then
+            echo "$ECH_KEYSTORE_BASE64" | base64 -d > /tmp/ech-release.keystore
+            echo "signing_release_storeFileFromRoot=/tmp/ech-release.keystore" >> local.properties
+            echo "signing_release_storePassword=$ECH_KEYSTORE_PASSWORD" >> local.properties
+            echo "signing_release_keyAlias=$ECH_KEYSTORE_ALIAS" >> local.properties
+            echo "signing_release_keyPassword=$ECH_KEYSTORE_PASSWORD" >> local.properties
+          else
+            # 无 keystore 时退回 debug 签名（仅用于临时构建，不作为正式发布）
+            keytool -genkey -keystore /tmp/ech-debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10950 -storepass android -keypass android -dname "CN=Android Debug,O=Android,C=US"
+            echo "signing_release_storeFileFromRoot=/tmp/ech-debug.keystore" >> local.properties
+            echo "signing_release_storePassword=android" >> local.properties
+            echo "signing_release_keyAlias=androiddebugkey" >> local.properties
+            echo "signing_release_keyPassword=android" >> local.properties
+          fi
+
       - name: Build app release APK
         run: |
-          keytool -genkey -keystore /tmp/ech-debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10950 -storepass android -keypass android -dname "CN=Android Debug,O=Android,C=US"
-          ./gradlew :app:android:assembleRelease --no-daemon --stacktrace -Pandroid.injected.signing.store.file=/tmp/ech-debug.keystore -Pandroid.injected.signing.store.password=android -Pandroid.injected.signing.key.alias=androiddebugkey -Pandroid.injected.signing.key.password=android 2>&1 | tee gradle-check.log; exit ${PIPESTATUS[0]}
+          ./gradlew :app:android:assembleRelease --no-daemon --stacktrace 2>&1 | tee gradle-check.log; exit ${PIPESTATUS[0]}
 
       - name: Upload release APK
         uses: actions/upload-artifact@v4
