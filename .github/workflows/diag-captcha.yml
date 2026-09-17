@@ -1,0 +1,33 @@
+name: diag-captcha
+on: [workflow_dispatch, push]
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: install tesseract
+        run: |
+          sudo apt-get update -qq >/dev/null 2>&1
+          sudo apt-get install -y -qq tesseract-ocr >/dev/null 2>&1
+          echo tesseract OK
+      - name: full login chain with OCR captcha + fake password
+        run: |
+          set -x
+          cd /tmp
+          UA="Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Mobile Safari/537.36"
+          curl -sL -A "$UA" -c c.txt -o login.html "https://bgm.tv/login"
+          FORM=$(grep -o 'name="formhash" value="[^"]*"' login.html | head -1 | sed 's/.*value="//;s/"//')
+          echo "formhash=$FORM"
+          TS=$(date +%s%3N)
+          for n in 1 2 3 4 5 6; do
+            curl -s -A "$UA" -b c.txt -o cap$n.gif "https://bgm.tv/signup/captcha?${TS}${n}"
+            CODE=$(tesseract cap$n.gif stdout 2>/dev/null | tr -d ' \n\r')
+            echo "图$n OCR=[$CODE] 文件:$(file -b cap$n.gif | cut -d, -f1)"
+            [ -z "$CODE" ] && { echo "OCR空，跳过"; continue; }
+            BODY="formhash=${FORM}&referer=%2Flogin&dreferer=&email=wrong%40test.com&password=wrongpass123&captcha_challenge_field=${CODE}&loginsubmit=%E7%99%BB%E5%BD%95&cookietime=2592000"
+            HTTP=$(curl -s -A "$UA" -b c.txt -c c.txt -e "https://bgm.tv/login" -o post$n.html -w "%{http_code}" --data-urlencode "captcha_challenge_field=${CODE}" -d "formhash=${FORM}&referer=%2Flogin&dreferer=&email=wrong%40test.com&password=wrongpass123&loginsubmit=%E7%99%BB%E5%BD%95&cookietime=2592000" "https://bgm.tv/FollowTheRabbit")
+            ERR=$(grep -o '验证码错误[^<]*\|密码错误[^<]*\|登录失败[^<]*\|<div class="message">[^<]*' post$n.html | head -2 | tr '\n' ' ')
+            echo "POST$n HTTP=$HTTP 提示=[$ERR]"
+            LOC=$(grep -o 'Location: [^ ]*' post$n.html 2>/dev/null | head -1)
+            [ "$LOC" != "" ] && echo "==== 302 跳转: $LOC ===="
+          done
