@@ -109,7 +109,13 @@ class EchInternalBrowserActivity : ComponentActivity() {
                             const f=e.target; if(!(f instanceof HTMLFormElement)) return;
                             const a=f.action||location.href;
                             if(!isBgm(a)) return;
+                            // 关键：阻止页面 JS 的 submit 处理器继续执行！
+                            // Discuz 登录页 $form.submit(...) 里调 showCaptcha()/genCaptcha()，
+                            // 会刷新服务器 session 里的验证码——用户输入的是旧验证码，必然"验证码错误"。
+                            // 我们代发 POST，必须让页面 JS 不再碰验证码。
                             e.preventDefault();
+                            e.stopPropagation();
+                            e.stopImmediatePropagation();
                             const fd=new FormData(f);
                             const ps=bodyToStr(fd, f);
                             const ct=f.enctype||'application/x-www-form-urlencoded';
@@ -128,6 +134,10 @@ class EchInternalBrowserActivity : ComponentActivity() {
                         host == "bangumi.tv" || host.endsWith(".bangumi.tv")
                     if (!isBgm) return null
                     if (req.method != "GET" && req.method != "HEAD") return null
+                    if (url.contains("signup/captcha")) {
+                        // 验证码图片请求：记录 cookie 与响应，用于排查图片与 POST 的 session 是否一致
+                        me.him188.ani.android.ech.EchLog.log("captcha GET $url cookie=${CookieManager.getInstance().getCookie("https://bgm.tv/")?.take(80)}")
+                    }
                     return try {
                         val headers = req.requestHeaders ?: emptyMap()
                         val cookie = CookieManager.getInstance().getCookie(url)
