@@ -5,12 +5,14 @@ jobs:
   diag:
     runs-on: ubuntu-latest
     steps:
-      - name: 抓登录页JS分析验证码刷新逻辑
+      - name: 输出登录页内联JS全文
         run: |
           cd /tmp
           UA="Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Mobile Safari/537.36"
           curl -sL -A "$UA" -c c.txt -o login.html "https://bgm.tv/login"
-          echo "=== 外链JS ==="
-          grep -o 'src="[^"]*"' login.html | sed 's/src="//;s/"//' | head -10
-          echo "=== 内联脚本 captcha/submit 相关行 ==="
-          sed 's/></>\n</g' login.html | grep -iE "captcha|genCaptcha|showCaptcha|FollowTheRabbit|loginsubmit" | head -15
+          wc -c login.html
+          grep -oE '<script[^>]*>[^<]*</script>' login.html | wc -l
+          echo "=== ALL SCRIPT SRC ==="
+          grep -oE 'src="[^"]*"' login.html
+          echo "=== 提取全部内联JS(captcha相关) ==="
+          awk '/<script/{f=1;next} /<\/script>/{f=0} f' login.html | grep -iE "captcha|genCaptcha|showCaptcha|submit|loginsubmit|FollowTheRabbit|seccode" | head -50
