@@ -1,0 +1,22 @@
+name: diag-captcha
+on: [workflow_dispatch]
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch BGM login + captcha image
+        run: |
+          UA="Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Mobile Safari/537.36"
+          # 先 GET 登录页拿 cookie
+          curl -sL -A "$UA" -c /tmp/c.txt -o /tmp/login.html -w "login HTTP=%{http_code}\n" "https://bgm.tv/login"
+          cat /tmp/c.txt | grep -v '^#' | head -5
+          # 抓验证码图片（模拟 JS: timestamp + 1-6）
+          TS=$(date +%s%3N)
+          for n in 1 2 3; do
+            URL="https://bgm.tv/signup/captcha?${TS}${n}"
+            echo "== $URL =="
+            curl -s -A "$UA" -b /tmp/c.txt -D - -o /tmp/captcha_$n.bin "$URL" -w "HTTP=%{http_code} type=%{content_type} size=%{size_download}\n" | grep -iE "HTTP/|content-type|content-length|location" | head -5
+            file /tmp/captcha_$n.bin 2>/dev/null
+            head -c 100 /tmp/captcha_$n.bin | xxd | head -3
+          done
