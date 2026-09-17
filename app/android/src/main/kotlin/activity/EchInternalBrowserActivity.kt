@@ -42,11 +42,25 @@ class EchInternalBrowserActivity : ComponentActivity() {
                           if(window.__echHooked) return; window.__echHooked=true;
                           const toAbs=(u)=>{ try{return new URL(u, location.href).href;}catch(_){return u;}};
                           const isBgm=(u)=>{ try{ const h=new URL(u, location.href).hostname; return h==='bgm.tv'||h.endsWith('.bgm.tv')||h==='bangumi.tv'||h.endsWith('.bangumi.tv'); }catch(_){ return false; } };
-                          const bodyToStr=(b)=>{
-                            if(typeof b==='string') return b;
-                            if(b instanceof FormData) return new URLSearchParams(b).toString();
-                            if(b instanceof URLSearchParams) return b.toString();
-                            return '';
+                          const bodyToStr=(b, f)=>{
+                            let s='';
+                            if(typeof b==='string') s=b;
+                            else if(b instanceof FormData) s=new URLSearchParams(b).toString();
+                            else if(b instanceof URLSearchParams) s=b.toString();
+                            // Discuz(bgm) 提交按钮字段：FormData 不含 <button name=value>，
+                            // 服务器校验 submit=登录/授权 按钮字段，缺失会拒绝(返回登录页)。
+                            if(f){
+                              const ps=new URLSearchParams(s);
+                              const btns=f.querySelectorAll('button[type="submit"],input[type="submit"]');
+                              for(const btn of btns){
+                                if(!btn.name) continue;
+                                if(!ps.has(btn.name)) ps.append(btn.name, btn.value||'');
+                              }
+                              // 登录表单补 cookietime（记住登录状态，Discuz 需要）
+                              if(/FollowTheRabbit/.test(f.action||'') && !ps.has('cookietime')) ps.append('cookietime','2592000');
+                              s=ps.toString();
+                            }
+                            return s;
                           };
                           const origFetch=window.fetch;
                           window.fetch=function(input, init){
@@ -55,7 +69,7 @@ class EchInternalBrowserActivity : ComponentActivity() {
                               const abs=toAbs(u);
                               const m=(init&&init.method||'GET').toUpperCase();
                               if(m==='POST' && isBgm(abs)){
-                                const body=init&&init.body? bodyToStr(init.body) : '';
+                                const body=init&&init.body? bodyToStr(init.body, null) : '';
                                 const ct=init&&init.headers? (init.headers['Content-Type']||init.headers['content-type']||'') : '';
                                 const ret=EchBridge.postForm(abs, body, ct, location.href);
                                 try{ const j=JSON.parse(ret); if(j.location){ location.href=j.location; return Promise.resolve(new Response('',{status:j.code})); } return Promise.resolve(new Response(j.body||'',{status:j.code, headers:{'Content-Type':'text/html'}})); }catch(_){}
@@ -67,7 +81,7 @@ class EchInternalBrowserActivity : ComponentActivity() {
                           XMLHttpRequest.prototype.open=function(m,u){ this._echM=m; this._echU=toAbs(u); return origOpen.apply(this, arguments); };
                           XMLHttpRequest.prototype.send=function(b){
                             if(this._echM==='POST' && isBgm(this._echU)){
-                              const body=b? bodyToStr(b): '';
+                              const body=b? bodyToStr(b, null): '';
                               const ret=EchBridge.postForm(this._echU, body, '', location.href);
                               try{ const j=JSON.parse(ret); if(j.location){ location.href=j.location; return; } }catch(_){}
                               Object.defineProperty(this,'readyState',{value:4}); Object.defineProperty(this,'status',{value:200});
@@ -82,7 +96,7 @@ class EchInternalBrowserActivity : ComponentActivity() {
                               const abs=toAbs(a);
                               if(isBgm(abs)){
                                 const fd=new FormData(this);
-                                const ps=new URLSearchParams(fd).toString();
+                                const ps=bodyToStr(fd, this);
                                 const ct=this.enctype||'application/x-www-form-urlencoded';
                                 const ret=EchBridge.postForm(abs, ps, ct, location.href);
                                 try{ const j=JSON.parse(ret); if(j.location){ location.href=j.location; return; } if(j.body!=undefined){ location.reload(); return; } }catch(_){}
@@ -97,7 +111,7 @@ class EchInternalBrowserActivity : ComponentActivity() {
                             if(!isBgm(a)) return;
                             e.preventDefault();
                             const fd=new FormData(f);
-                            const ps=new URLSearchParams(fd).toString();
+                            const ps=bodyToStr(fd, f);
                             const ct=f.enctype||'application/x-www-form-urlencoded';
                             const abs=toAbs(a);
                             const ret=EchBridge.postForm(abs, ps, ct, location.href);

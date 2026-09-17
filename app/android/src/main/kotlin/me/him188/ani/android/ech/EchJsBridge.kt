@@ -53,6 +53,11 @@ class EchJsBridge(private val onNavigate: (String) -> Unit) {
                 onNavigate(loc)
                 """{"code":$code,"location":"$loc"}"""
             } else {
+                // 失败(200登录页)：提取服务器错误提示（Discuz 返回页面内嵌 alert/message 文本），
+                // 用于区分 验证码错误 / 密码错误 / 其他，用户可据此操作
+                val errHint = Regex("(验证码[^<]{0,60}|密码[^<]{0,60}|登录失败[^<]{0,60}|错误[^<]{0,80}|alert[^<]{0,100}|class=[\"']?[^\"'>]*(?:alert|error|message)[^\"'>]*[\"']?[^<]{0,120})", RegexOption.IGNORE_CASE)
+                    .findAll(respBody).map { it.value }.toList().take(3).joinToString(" | ")
+                EchLog.log("postForm 失败(无302) code=$code 服务器提示=$errHint")
                 // 返回页面内容，JS 侧替换 document
                 """{"code":$code,"body":${org.json.JSONObject.quote(respBody)}}"""
             }
