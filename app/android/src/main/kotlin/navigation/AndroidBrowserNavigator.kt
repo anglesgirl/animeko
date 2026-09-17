@@ -21,11 +21,26 @@ import me.him188.ani.utils.logging.logger
 class AndroidBrowserNavigator : BrowserNavigator {
     private val logger = logger<AndroidBrowserNavigator>()
 
+    private fun isBgmUrl(url: String): Boolean {
+        val h = runCatching { url.toUri().host?.lowercase()?.trimEnd('.') }.getOrNull() ?: return false
+        return h == "bgm.tv" || h.endsWith(".bgm.tv") || h == "bangumi.tv" || h.endsWith(".bangumi.tv") ||
+            h == "api.bgm.tv" || h.endsWith(".api.bgm.tv") || h == "next.bgm.tv" || h.endsWith(".next.bgm.tv")
+    }
+
     override fun openBrowser(context: Context, url: String): OpenBrowserResult {
-        // 统一走系统浏览器（Custom Tab）：
-        // Bangumi OAuth 采用 animeko 官方后端模式——App 从 api.animeko.org 申请授权链接，
-        // 浏览器打开 bgm.tv 由用户/浏览器原生完成登录+验证码+授权，302 回调 api.animeko.org 由后端绑定，
-        // App 轮询 api.animeko.org 拿结果。全程 App 不直连 bgm.tv，不需要 ECH 站内浏览器。
+        // bgm.tv SNI 阻断被墙：系统浏览器打不开，必须走站内 ECH 浏览器（WebView）。
+        // 页面/验证码由 ECH 通道加载(GET 拦截)，表单提交(含 Discuz 提交按钮字段)由 JS 桥走 ECH POST。
+        if (isBgmUrl(url)) {
+            try {
+                val i = Intent(context, me.him188.ani.android.activity.EchInternalBrowserActivity::class.java).apply {
+                    putExtra(me.him188.ani.android.activity.EchInternalBrowserActivity.EXTRA_URL, url)
+                }
+                context.startActivity(i)
+                return OpenBrowserResult.Success
+            } catch (e: Exception) {
+                logger.warn("ECH 内置浏览器打开失败", e)
+            }
+        }
         val lastEx: Exception
 
         try {
