@@ -1,0 +1,19 @@
+[package]
+name = "ani_h3"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "ani_h3"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+quiche = { version = "0.22", features = ["boringssl-vendored", "ffi", "pkg-config-meta"] }
+rand = "0.8"
+jni = "0.21"
+
+# CI：先下载 quiche 0.22 源码并用 tools/patch_quiche.py 打 ECH 补丁，
+# 再用这份本地副本覆盖 crates.io 的版本（quiche 本身没有任何 ECH 代码，
+# 但它 vendor 的 BoringSSL 有完整 ECH 客户端实现）。
+[patch.crates-io]
+quiche = { path = "vendor/quiche" }

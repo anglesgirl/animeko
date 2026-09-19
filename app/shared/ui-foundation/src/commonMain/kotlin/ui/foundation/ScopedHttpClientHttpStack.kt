@@ -41,14 +41,21 @@ internal class ScopedHttpClientHttpStack(
         httpHeaders: HttpHeaders?,
         extras: Extras?,
         block: suspend (HttpStack.Response) -> T,
-    ): T = scopedClient.use {
-        val request = HttpRequestBuilder().apply {
-            url(url)
-            httpHeaders?.addList?.forEach { (name, value) -> headers.append(name, value) }
-            httpHeaders?.setList?.forEach { (name, value) -> headers[name] = value }
+    ): T {
+        // H3 优先：Android 侧注册的钩子先试一次 QUIC+ECH（静态图片 GET，可缓存、无会话）。
+        // 未注册 / 返回 null（不适用或失败）时，下面照旧走 Ktor HTTP 栈 —— 行为与改动前一致。
+        AniImageH3.h3Loader?.invoke(url)?.let { bytes ->
+            return block(AniImageH3Response(bytes))
         }
-        prepareRequest(request).execute { response ->
-            block(KtorResponse(response))
+        return scopedClient.use {
+            val request = HttpRequestBuilder().apply {
+                url(url)
+                httpHeaders?.addList?.forEach { (name, value) -> headers.append(name, value) }
+                httpHeaders?.setList?.forEach { (name, value) -> headers[name] = value }
+            }
+            prepareRequest(request).execute { response ->
+                block(KtorResponse(response))
+            }
         }
     }
 

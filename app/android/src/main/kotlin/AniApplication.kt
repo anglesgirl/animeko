@@ -100,6 +100,8 @@ class AniApplication : Application() {
 
         // ECH 传输注入（请求时 fail-closed）
         runCatching { me.him188.ani.android.ech.BgmEchInit.install(this) }
+        // H3(QUIC+ECH) 静态图片优先：失败记 24h 负缓存并回落 TCP+ECH，钩子挂不上也不影响既有链路
+        runCatching { me.him188.ani.android.ech.AniEchH3.install(this) }
 
         val defaultUEH = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->

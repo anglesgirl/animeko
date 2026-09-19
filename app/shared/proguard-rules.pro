@@ -61,3 +61,7 @@
 -keepclassmembers class me.him188.ani.android.ech.ConscryptEch$PolicyTrustManager {
     public org.conscrypt.NetworkSecurityPolicy getNetworkSecurityPolicy();
 }
+
+# H3 原生库入口：JNI 按类名/方法名查找，混淆后 native 侧找不到方法会直接 crash
+-keep class me.him188.ani.android.ech.AniEchH3 { *; }
+-keepclasseswithmembernames class me.him188.ani.android.ech.AniEchH3 { native <methods>; }
