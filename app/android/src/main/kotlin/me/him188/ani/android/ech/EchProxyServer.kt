@@ -10,6 +10,7 @@ import java.net.Socket
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okio.Buffer
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
@@ -180,7 +181,23 @@ object EchProxyServer {
                 }
 
                 val resp = EchHttp.get().newCall(rb.build()).execute()
-                val respBody = resp.body?.bytes() ?: ByteArray(0)
+                // 上限保护：响应要整段读进内存才能改写 HTML，超大响应会把内存打爆。
+                // 登录页/接口响应都很小，超过上限直接拒绝（宁可失败，不要 OOM）。
+                val maxBodyBytes = 8L * 1024 * 1024
+                val respBody = resp.body?.let { body ->
+                    val declared = body.contentLength()
+                    if (declared > maxBodyBytes) {
+                        throw IllegalStateException("响应过大（$declared 字节），已拒绝")
+                    }
+                    val src = body.source()
+                    val buf = okio.Buffer()
+                    // request(n) 返回 false 表示流已结束（不足 n 字节），此时 readAll 是有界的
+                    if (src.request(maxBodyBytes + 1)) {
+                        throw IllegalStateException("响应超过 ${maxBodyBytes} 字节，已拒绝")
+                    }
+                    src.readAll(buf)
+                    buf.readByteArray()
+                } ?: ByteArray(0)
                 var respBytes = respBody
 
                 // Set-Cookie 同步到 WebView
@@ -202,6 +219,7 @@ object EchProxyServer {
                     if (n.equals("Content-Length", true) || n.equals("Content-Encoding", true) || n.equals("Transfer-Encoding", true)) continue
                     if (n.equals("Location", true) && v != null) {
                         val newLoc = when {
+                            v.startsWith("//") -> proxyUrl("https:$v")
                             v.startsWith("https://") || v.startsWith("http://") -> proxyUrl(v)
                             v.startsWith("/") -> {
                                 val u = java.net.URL(targetUrl)
@@ -221,7 +239,14 @@ object EchProxyServer {
                     val html = String(respBytes, Charsets.UTF_8)
                     // 仅对 BGM 相关域重写，避免全量替换误伤
                     var outHtml = html
-                    for (host in listOf("https://bgm.tv", "https://api.bgm.tv", "https://next.bgm.tv", "https://bangumi.tv")) {
+                    // 必须覆盖协议相对（//bgm.tv）与 http:// 变体：漏掉的话页面里的
+                    // <script src="//bgm.tv/..."> 会让 WebView 直连真站，SNI 直接暴露。
+                    for (host in listOf(
+                        "https://bgm.tv", "http://bgm.tv", "//bgm.tv",
+                        "https://api.bgm.tv", "http://api.bgm.tv", "//api.bgm.tv",
+                        "https://next.bgm.tv", "http://next.bgm.tv", "//next.bgm.tv",
+                        "https://bangumi.tv", "http://bangumi.tv", "//bangumi.tv",
+                    )) {
                         outHtml = outHtml.replace(host, proxyUrl(host))
                     }
                     respBytes = outHtml.toByteArray(Charsets.UTF_8)

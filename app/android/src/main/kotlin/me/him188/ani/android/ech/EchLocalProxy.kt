@@ -10,6 +10,7 @@ import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.Executors
+import okio.Buffer
 
 /**
  * 进程内本地代理（Kotlin，非 Go 外挂进程）：
@@ -23,6 +24,9 @@ import java.util.concurrent.Executors
  * - cookie 在代理内维护（bgm.tv 域）；302 到 api.animeko.org 原样放行，WebView 原生跳转完成绑定
  */
 object EchLocalProxy {
+
+    /** 受保护域：一律经本代理走 ECH，绝不允许页面直接连真站 */
+    private val PROTECTED_HOSTS = listOf("bgm.tv", "api.bgm.tv", "next.bgm.tv", "bangumi.tv")
     const val PORT = 8888
     private const val TARGET_HOST = "bgm.tv"
 
@@ -117,7 +121,23 @@ object EchLocalProxy {
                     storeSetCookie(sc)
                 }
                 val code = r.code
-                val respBody = r.body?.bytes() ?: ByteArray(0)
+                // 上限保护：响应整段读进内存才能改写，超大响应会打爆内存（登录页/接口都很小）
+                val maxBodyBytes = 8L * 1024 * 1024
+                val declaredLen = r.body?.contentLength() ?: -1L
+                if (declaredLen > maxBodyBytes) {
+                    writeSimple(out, 502, "响应过大（$declaredLen），已拒绝")
+                    return
+                }
+                val respBody = r.body?.let { body ->
+                    val src = body.source()
+                    val buf = Buffer()
+                    if (src.request(maxBodyBytes + 1)) {
+                        writeSimple(out, 502, "响应超过 $maxBodyBytes 字节，已拒绝")
+                        return
+                    }
+                    src.readAll(buf)
+                    buf.readByteArray()
+                } ?: ByteArray(0)
                 val ct = r.header("Content-Type") ?: "text/html"
                 val isHtml = ct.contains("html")
                 var finalBody = respBody
@@ -136,9 +156,14 @@ object EchLocalProxy {
                 }
                 if (isHtml) {
                     // 页面内 https://bgm.tv 绝对链接 → 127.0.0.1（相对路径天然命中本地，无需处理）
-                    val html = String(respBody, Charsets.UTF_8)
-                        .replace("https://$TARGET_HOST", "http://127.0.0.1:$PORT")
-                        .replace("http://$TARGET_HOST", "http://127.0.0.1:$PORT")
+                    // 覆盖 https:// / http:// / 协议相对（//）三种写法，且把所有受保护域都算上。
+                    // 漏掉协议相对时，页面里的 <script src="//bgm.tv/..."> 会让 WebView 直连真站 → SNI 暴露。
+                    var html = String(respBody, Charsets.UTF_8)
+                    for (scheme in listOf("https://", "http://", "//")) {
+                        for (h in PROTECTED_HOSTS) {
+                            html = html.replace("$scheme$h", "http://127.0.0.1:$PORT")
+                        }
+                    }
                     finalBody = html.toByteArray(Charsets.UTF_8)
                     finalHeaders.removeAll { it.first == "Content-Type" }
                     finalHeaders.add("Content-Type" to "text/html; charset=utf-8")
@@ -157,8 +182,26 @@ object EchLocalProxy {
         }
     }
 
+    /** 简单响应（带清晰的失败原因，绝不静默断连） */
+    private fun writeSimple(out: OutputStream, code: Int, msg: String) {
+        val body = msg.toByteArray(Charsets.UTF_8)
+        val reason = if (code == 502) "Bad Gateway" else "Error"
+        val head = "HTTP/1.1 $code $reason\r\n" +
+            "Content-Type: text/plain; charset=utf-8\r\n" +
+            "Content-Length: ${body.size}\r\n" +
+            "Connection: close\r\n\r\n"
+        runCatching {
+            out.write(head.toByteArray(Charsets.ISO_8859_1))
+            out.write(body)
+            out.flush()
+        }
+    }
+
     private fun rewriteLocation(loc: String): String {
         return when {
+            // 协议相对（//bgm.tv/...）：WebView 会按当前页面的 127.0.0.1 解析，但若是 //bgm.tv 就会直连真站
+            loc.startsWith("//") && PROTECTED_HOSTS.any { loc.startsWith("//$it") } ->
+                loc.replaceFirst(Regex("//(${PROTECTED_HOSTS.joinToString("|") { Regex.escape(it) }})"), "http://127.0.0.1:$PORT")
             loc.startsWith("http://$TARGET_HOST") || loc.startsWith("https://$TARGET_HOST") ->
                 loc.replaceFirst(Regex("https?://$TARGET_HOST"), "http://127.0.0.1:$PORT")
             loc.startsWith("/") -> loc  // 相对路径，WebView 按 127.0.0.1 解析
