@@ -55,6 +55,18 @@ internal object EchDoh {
     private val aCache = ConcurrentHashMap<String, Entry<List<InetAddress>>>()
     private val echCache = ConcurrentHashMap<String, Entry<ByteArray>>()
 
+    private companion object {
+        /** CF 官方活值来源：会随 CF 轮换自动更新，对任何 CF 边缘域名有效 */
+        const val LIVE_SOURCE_HOST = "cloudflare-ech.com"
+
+        /** 配置缓存 30 分钟（CF 的 ECH 密钥轮换周期远长于此，到期重新拉取即可） */
+        const val CACHE_TTL_MS = 30 * 60 * 1000L
+    }
+
+    /** CF 官方 ECH 活值的单独缓存 */
+    @Volatile
+    private var officialCache: Entry<ByteArray>? = null
+
     private fun get(dohUrl: String, name: String, qtype: String): JSONObject? {
         val req = Request.Builder().url("$dohUrl?name=$name&type=$qtype")
             .header("Accept", "application/dns-json")
@@ -103,8 +115,35 @@ internal object EchDoh {
         throw lastErr ?: UnknownHostException("DoH全灭")
     }
 
+    /**
+     * 取目标域的 ECH 配置。
+     *
+     * 先取 CF 官方 [LIVE_SOURCE_HOST] 的**活值**：域名自己的 `ech=` 记录常常过期或被服务端拒绝
+     * （被拒时握手直接失败），而官方值对任何 CF 边缘域名都有效，且会随 CF 轮换自动更新。
+     * 官方取不到时才退回域名自己的记录。
+     */
     fun fetchEch(host: String): ByteArray {
         echCache[host]?.let { if (System.currentTimeMillis() < it.expiresAt) return it.value }
+
+        officialEch()?.let { official ->
+            echCache[host] = Entry(official, System.currentTimeMillis() + CACHE_TTL_MS)
+            return official
+        }
+
+        return fetchEchRecord(host).also {
+            echCache[host] = Entry(it, System.currentTimeMillis() + CACHE_TTL_MS)
+        }
+    }
+
+    /** CF 官方域名 cloudflare-ech.com 的活值，单独缓存，避免每个域名都去查一次。 */
+    private fun officialEch(): ByteArray? {
+        officialCache?.let { if (System.currentTimeMillis() < it.expiresAt) return it.value }
+        return runCatching { fetchEchRecord(LIVE_SOURCE_HOST) }
+            .getOrNull()
+            ?.also { officialCache = Entry(it, System.currentTimeMillis() + CACHE_TTL_MS) }
+    }
+
+    private fun fetchEchRecord(host: String): ByteArray {
         var lastErr: Exception? = null
         for (url in pool) {
             try {
