@@ -135,6 +135,16 @@ internal object EchDoh {
         }
     }
 
+    /**
+     * 握手失败（多为 ECH 被拒 / 本地配置过期）后调用：把该域与官方源的配置、以及地址缓存全部丢掉，
+     * 让下一次请求重新取一份新配置。CF 的 ECH 密钥约每几小时轮换一次，缓存落后时只有清掉才可能恢复。
+     */
+    fun invalidate(host: String) {
+        echCache.remove(host)
+        synchronized(this) { officialCache = null }
+        aCache.remove(host)
+    }
+
     /** CF 官方域名 cloudflare-ech.com 的活值，单独缓存，避免每个域名都去查一次。 */
     private fun officialEch(): ByteArray? {
         officialCache?.let { if (System.currentTimeMillis() < it.expiresAt) return it.value }
