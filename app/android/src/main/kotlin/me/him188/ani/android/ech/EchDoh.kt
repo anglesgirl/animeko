@@ -55,13 +55,13 @@ internal object EchDoh {
     private val aCache = ConcurrentHashMap<String, Entry<List<InetAddress>>>()
     private val echCache = ConcurrentHashMap<String, Entry<ByteArray>>()
 
-    private companion object {
-        /** CF 官方活值来源：会随 CF 轮换自动更新，对任何 CF 边缘域名有效 */
-        const val LIVE_SOURCE_HOST = "cloudflare-ech.com"
+    // 注意：EchDoh 是 standalone object，不能在里面写 companion object（编译直接报
+    // "Modifier 'companion' is not applicable inside 'standalone object'"），常量放 object 级即可。
+    /** CF 官方活值来源：会随 CF 轮换自动更新，对任何 CF 边缘域名有效 */
+    private const val LIVE_SOURCE_HOST = "cloudflare-ech.com"
 
-        /** 配置缓存 30 分钟（CF 的 ECH 密钥轮换周期远长于此，到期重新拉取即可） */
-        const val CACHE_TTL_MS = 30 * 60 * 1000L
-    }
+    /** 配置缓存 30 分钟（CF 的 ECH 密钥轮换周期远长于此，到期重新拉取即可） */
+    private const val CACHE_TTL_MS = 30 * 60 * 1000L
 
     /** CF 官方 ECH 活值的单独缓存 */
     @Volatile
